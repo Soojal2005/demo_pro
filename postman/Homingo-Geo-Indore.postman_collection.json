@@ -3101,7 +3101,7 @@
                 }
               ],
               "cookie": [],
-              "body": "{\n  \"success\": false,\n  \"statusCode\": 409,\n  \"message\": \"A Professional can only be posted to a zone in their assigned city\",\n  \"data\": null,\n  \"errors\": [\n    {\n      \"field\": \"proId\",\n      \"message\": \"Professional city and zone city must match\",\n      \"code\": \"[REDACTED]\"\n    }\n  ],\n  \"timestamp\": \"2026-08-13T08:53:42.614Z\",\n  \"path\": \"/api/v1/admin/areas/72443137-f857-4edf-a135-22b8a42f42c8/pros\"\n}"
+              "body": "{\n  \"success\": false,\n  \"statusCode\": 409,\n  \"message\": \"A Professional can only be posted to a zone in their assigned city\",\n  \"data\": null,\n  \"errors\": [\n    {\n      \"field\": \"proId\",\n      \"message\": \"Professional city and zone city must match\",\n      \"code\": \"PRO_AREA_CITY_MISMATCH\"\n    }\n  ],\n  \"timestamp\": \"2026-08-13T08:53:42.614Z\",\n  \"path\": \"/api/v1/admin/areas/72443137-f857-4edf-a135-22b8a42f42c8/pros\"\n}"
             }
           ],
           "event": [
@@ -4795,7 +4795,7 @@
                 }
               ],
               "cookie": [],
-              "body": "{\n  \"success\": true,\n  \"statusCode\": 200,\n  \"message\": \"Success\",\n  \"data\": {\n    \"serviceable\": false,\n    \"area\": null,\n    \"reason\": \"We are not operating in this location yet\",\n    \"code\": \"[REDACTED]\"\n  },\n  \"timestamp\": \"2026-08-13T08:53:45.009Z\",\n  \"path\": \"/api/v1/geo/serviceability?lat=22.688983&lng=75.829740\"\n}"
+              "body": "{\n  \"success\": true,\n  \"statusCode\": 200,\n  \"message\": \"Success\",\n  \"data\": {\n    \"serviceable\": false,\n    \"area\": null,\n    \"reason\": \"We are not operating in this location yet\",\n    \"code\": \"LOCATION_NOT_SERVICEABLE\"\n  },\n  \"timestamp\": \"2026-08-13T08:53:45.009Z\",\n  \"path\": \"/api/v1/geo/serviceability?lat=22.688983&lng=75.829740\"\n}"
             }
           ],
           "event": [
@@ -5879,7 +5879,7 @@
                 }
               ],
               "cookie": [],
-              "body": "{\n  \"success\": true,\n  \"statusCode\": 200,\n  \"message\": \"Success\",\n  \"data\": {\n    \"serviceable\": false,\n    \"area\": null,\n    \"reason\": \"We are not operating in this location yet\",\n    \"code\": \"[REDACTED]\"\n  },\n  \"timestamp\": \"2026-08-13T08:53:46.211Z\",\n  \"path\": \"/api/v1/geo/serviceability?lat=22.724158&lng=75.905052\"\n}"
+              "body": "{\n  \"success\": true,\n  \"statusCode\": 200,\n  \"message\": \"Success\",\n  \"data\": {\n    \"serviceable\": false,\n    \"area\": null,\n    \"reason\": \"We are not operating in this location yet\",\n    \"code\": \"LOCATION_NOT_SERVICEABLE\"\n  },\n  \"timestamp\": \"2026-08-13T08:53:46.211Z\",\n  \"path\": \"/api/v1/geo/serviceability?lat=22.724158&lng=75.905052\"\n}"
             }
           ],
           "event": [
@@ -5956,7 +5956,7 @@
                 }
               ],
               "cookie": [],
-              "body": "{\n  \"success\": true,\n  \"statusCode\": 200,\n  \"message\": \"Success\",\n  \"data\": {\n    \"serviceable\": false,\n    \"area\": null,\n    \"reason\": \"We are not operating in this location yet\",\n    \"code\": \"[REDACTED]\"\n  },\n  \"timestamp\": \"2026-08-13T08:53:46.316Z\",\n  \"path\": \"/api/v1/geo/serviceability?lat=22.724158&lng=75.905052&serviceId=00000000-0000-4000-b000-000000000001\"\n}"
+              "body": "{\n  \"success\": true,\n  \"statusCode\": 200,\n  \"message\": \"Success\",\n  \"data\": {\n    \"serviceable\": false,\n    \"area\": null,\n    \"reason\": \"We are not operating in this location yet\",\n    \"code\": \"LOCATION_NOT_SERVICEABLE\"\n  },\n  \"timestamp\": \"2026-08-13T08:53:46.316Z\",\n  \"path\": \"/api/v1/geo/serviceability?lat=22.724158&lng=75.905052&serviceId=00000000-0000-4000-b000-000000000001\"\n}"
             }
           ],
           "event": [
@@ -6027,7 +6027,7 @@
                 }
               ],
               "cookie": [],
-              "body": "{\n  \"success\": true,\n  \"statusCode\": 200,\n  \"message\": \"Success\",\n  \"data\": {\n    \"area\": null,\n    \"serviceable\": false,\n    \"reason\": \"We are not operating in this location yet\",\n    \"code\": \"[REDACTED]\",\n    \"services\": [\n      {\n        \"id\": \"00000000-0000-4000-b000-000000000001\",\n        \"createdAt\": \"2026-08-13T14:22:21.339Z\",\n        \"updatedAt\": \"2026-08-13T14:22:21.339Z\",\n        \"categoryId\": \"00000000-0000-4000-a000-000000000001\",\n        \"name\": \"Indore AC Service\",\n        \"description\": \"Geo Postman primary service\",\n        \"durationMinutes\": 60,\n        \"flatPrice\": \"599\",\n        \"supportsInstant\": true,\n        \"supportsScheduled\": true,\n        \"supportsRecurring\": false,\n        \"isActive\": true,\n        \"allowsCash\": true,\n        \"isAvailable\": false,\n        \"unavailableReason\": \"We are not operating in this location yet\"\n      },\n      {\n        \"id\": \"00000000-0000-4000-b000-000000000002\",\n        \"createdAt\": \"2026-08-13T14:22:21.339Z\",\n        \"updatedAt\": \"2026-08-13T14:22:21.339Z\",\n        \"categoryId\": \"00000000-0000-4000-a000-000000000001\",\n        \"name\": \"Indore Deep Cleaning\",\n        \"description\": \"Geo Postman secondary service\",\n        \"durationMinutes\": 120,\n        \"flatPrice\": \"1499\",\n        \"supportsInstant\": true,\n        \"supportsScheduled\": true,\n        \"supportsRecurring\": false,\n        \"isActive\": true,\n        \"allowsCash\": true,\n        \"isAvailable\": false,\n        \"unavailableReason\": \"We are not operating in this location yet\"\n      }\n    ]\n  },\n  \"timestamp\": \"2026-08-13T08:53:46.418Z\",\n  \"path\": \"/api/v1/geo/catalog?lat=22.724158&lng=75.905052\"\n}"
+              "body": "{\n  \"success\": true,\n  \"statusCode\": 200,\n  \"message\": \"Success\",\n  \"data\": {\n    \"area\": null,\n    \"serviceable\": false,\n    \"reason\": \"We are not operating in this location yet\",\n    \"code\": \"LOCATION_NOT_SERVICEABLE\",\n    \"services\": [\n      {\n        \"id\": \"00000000-0000-4000-b000-000000000001\",\n        \"createdAt\": \"2026-08-13T14:22:21.339Z\",\n        \"updatedAt\": \"2026-08-13T14:22:21.339Z\",\n        \"categoryId\": \"00000000-0000-4000-a000-000000000001\",\n        \"name\": \"Indore AC Service\",\n        \"description\": \"Geo Postman primary service\",\n        \"durationMinutes\": 60,\n        \"flatPrice\": \"599\",\n        \"supportsInstant\": true,\n        \"supportsScheduled\": true,\n        \"supportsRecurring\": false,\n        \"isActive\": true,\n        \"allowsCash\": true,\n        \"isAvailable\": false,\n        \"unavailableReason\": \"We are not operating in this location yet\"\n      },\n      {\n        \"id\": \"00000000-0000-4000-b000-000000000002\",\n        \"createdAt\": \"2026-08-13T14:22:21.339Z\",\n        \"updatedAt\": \"2026-08-13T14:22:21.339Z\",\n        \"categoryId\": \"00000000-0000-4000-a000-000000000001\",\n        \"name\": \"Indore Deep Cleaning\",\n        \"description\": \"Geo Postman secondary service\",\n        \"durationMinutes\": 120,\n        \"flatPrice\": \"1499\",\n        \"supportsInstant\": true,\n        \"supportsScheduled\": true,\n        \"supportsRecurring\": false,\n        \"isActive\": true,\n        \"allowsCash\": true,\n        \"isAvailable\": false,\n        \"unavailableReason\": \"We are not operating in this location yet\"\n      }\n    ]\n  },\n  \"timestamp\": \"2026-08-13T08:53:46.418Z\",\n  \"path\": \"/api/v1/geo/catalog?lat=22.724158&lng=75.905052\"\n}"
             }
           ],
           "event": [
@@ -6339,7 +6339,7 @@
                 }
               ],
               "cookie": [],
-              "body": "{\n  \"success\": true,\n  \"statusCode\": 200,\n  \"message\": \"Success\",\n  \"data\": {\n    \"source\": \"default_address\",\n    \"address\": {\n      \"id\": \"606aa035-cea8-4065-a2b2-74a14b3c908a\",\n      \"label\": \"other\",\n      \"addressLine\": \"Ring Road, Indore, Madhya Pradesh 452001, India\",\n      \"pinLat\": 22.724158,\n      \"pinLng\": 75.905052,\n      \"cityId\": \"00000000-0000-4000-9000-000000000001\"\n    },\n    \"area\": null,\n    \"serviceable\": false,\n    \"reason\": \"We are not operating at your saved address yet\",\n    \"code\": \"[REDACTED]\"\n  },\n  \"timestamp\": \"2026-08-13T08:53:46.758Z\",\n  \"path\": \"/api/v1/geo/my-location\"\n}"
+              "body": "{\n  \"success\": true,\n  \"statusCode\": 200,\n  \"message\": \"Success\",\n  \"data\": {\n    \"source\": \"default_address\",\n    \"address\": {\n      \"id\": \"606aa035-cea8-4065-a2b2-74a14b3c908a\",\n      \"label\": \"other\",\n      \"addressLine\": \"Ring Road, Indore, Madhya Pradesh 452001, India\",\n      \"pinLat\": 22.724158,\n      \"pinLng\": 75.905052,\n      \"cityId\": \"00000000-0000-4000-9000-000000000001\"\n    },\n    \"area\": null,\n    \"serviceable\": false,\n    \"reason\": \"We are not operating at your saved address yet\",\n    \"code\": \"LOCATION_NOT_SERVICEABLE\"\n  },\n  \"timestamp\": \"2026-08-13T08:53:46.758Z\",\n  \"path\": \"/api/v1/geo/my-location\"\n}"
             }
           ],
           "event": [
@@ -6677,7 +6677,7 @@
                 }
               ],
               "cookie": [],
-              "body": "{\n  \"success\": false,\n  \"statusCode\": 409,\n  \"message\": \"Disable booking area enforcement before replacing this city map\",\n  \"data\": null,\n  \"errors\": [\n    {\n      \"field\": \"cityId\",\n      \"message\": \"A replacement grid starts unconfigured; leaving enforcement on would reject every booking\",\n      \"code\": \"[REDACTED]\"\n    }\n  ],\n  \"timestamp\": \"2026-08-13T08:53:47.115Z\",\n  \"path\": \"/api/v1/admin/areas/regenerate\"\n}"
+              "body": "{\n  \"success\": false,\n  \"statusCode\": 409,\n  \"message\": \"Disable booking area enforcement before replacing this city map\",\n  \"data\": null,\n  \"errors\": [\n    {\n      \"field\": \"cityId\",\n      \"message\": \"A replacement grid starts unconfigured; leaving enforcement on would reject every booking\",\n      \"code\": \"AREA_ENFORCEMENT_ENABLED\"\n    }\n  ],\n  \"timestamp\": \"2026-08-13T08:53:47.115Z\",\n  \"path\": \"/api/v1/admin/areas/regenerate\"\n}"
             }
           ],
           "event": [
