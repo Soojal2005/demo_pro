@@ -3,6 +3,7 @@ import {
   HttpStatus,
   Inject,
   Injectable,
+  Logger,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -15,10 +16,15 @@ import { GuestSessionDto } from '../dto/guest-session.dto';
 import { RequestOtpDto } from '../dto/request-otp.dto';
 import { VerifyOtpDto } from '../dto/verify-otp.dto';
 import { OTP_PROVIDER, type OtpProvider } from '../otp/otp-provider.interface';
+import {
+  maskPhone,
+  recipientForeignKey,
+} from '../../notifications/notification.types';
 import { TokenPair, TokenService } from './token.service';
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
   constructor(
     @Inject(OTP_PROVIDER) private readonly otpProvider: OtpProvider,
     private readonly tokenService: TokenService,
@@ -46,6 +52,7 @@ export class AuthService {
       result.providerRef,
       this.numberConfig('OTP_TTL_SECONDS', 300),
     );
+    await this.recordOtpRequest(dto, result.providerRef);
     return result;
   }
 
@@ -84,12 +91,74 @@ export class AuthService {
     }
 
     const user = await this.resolveActor(dto);
+    if (dto.pushToken && dto.pushPlatform)
+      await this.storePushToken(user, dto.pushToken, dto.pushPlatform);
     await this.redis.del(
       `otp:active:${dto.phone}`,
       `otp:failed:${dto.phone}`,
       `otp:lock:${dto.phone}`,
     );
     return this.tokenService.issueTokenPair(user);
+  }
+
+  private async recordOtpRequest(
+    dto: RequestOtpDto,
+    providerRef: string,
+  ): Promise<void> {
+    try {
+      const recipient =
+        dto.actorType === 'customer'
+          ? await this.prisma.customer.findUnique({
+              where: { phone: dto.phone },
+            })
+          : dto.actorType === 'pro'
+            ? await this.prisma.pro.findUnique({ where: { phone: dto.phone } })
+            : await this.prisma.adminUser.findUnique({
+                where: { phone: dto.phone },
+              });
+      await this.prisma.notificationLog.create({
+        data: {
+          dedupeKey: `otp:${providerRef}`,
+          recipientType: dto.actorType,
+          ...(recipient
+            ? recipientForeignKey(dto.actorType, recipient.id)
+            : {}),
+          recipientMasked: maskPhone(dto.phone),
+          channel:
+            this.config.get<string>('SLIDE_DEFAULT_CHANNEL', 'whatsapp') ===
+            'sms'
+              ? 'sms'
+              : 'whatsapp',
+          provider: 'slide',
+          templateKey: 'auth.otp',
+          payloadJson: { kind: 'otp', secretStored: false },
+          status: 'accepted',
+          providerReference: providerRef,
+          sentAt: new Date(),
+        },
+      });
+    } catch (error) {
+      this.logger.error(
+        `OTP ${providerRef} was sent but its notification log could not be written: ${error instanceof Error ? error.message : 'unknown error'}`,
+      );
+    }
+  }
+
+  private async storePushToken(
+    user: AuthenticatedUser,
+    pushToken: string,
+    pushPlatform: 'android' | 'ios',
+  ): Promise<void> {
+    const data = {
+      pushToken,
+      pushPlatform,
+      pushTokenUpdatedAt: new Date(),
+    };
+    if (user.actorType === 'customer')
+      await this.prisma.customer.update({ where: { id: user.id }, data });
+    else if (user.actorType === 'pro')
+      await this.prisma.pro.update({ where: { id: user.id }, data });
+    else await this.prisma.adminUser.update({ where: { id: user.id }, data });
   }
 
   async createGuestSession(dto: GuestSessionDto): Promise<TokenPair> {

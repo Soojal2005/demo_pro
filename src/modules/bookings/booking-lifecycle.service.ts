@@ -1,4 +1,10 @@
-import { HttpStatus, Inject, Injectable, Logger } from '@nestjs/common';
+import {
+  HttpStatus,
+  Inject,
+  Injectable,
+  Logger,
+  Optional,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { apiError } from '../../common/utils';
 import type { Booking, JobPhotoProof } from '../../prisma/client';
@@ -10,6 +16,7 @@ import {
   type OtpProvider,
 } from '../identity/otp/otp-provider.interface';
 import { ProCountersService } from '../pros/pro-counters.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { BookingStateService } from './booking-state.service';
 import type { TransitionCoordinates } from './booking.types';
 import { BookingsService } from './bookings.service';
@@ -41,6 +48,7 @@ export class BookingLifecycleService {
     private readonly config: ConfigService,
     @Inject(OTP_PROVIDER) private readonly otp: OtpProvider,
     @Inject(COMMISSION_PORT) private readonly commission: CommissionPort,
+    @Optional() private readonly notifications?: NotificationsService,
   ) {}
 
   // ------------------------------------------------------------------
@@ -121,6 +129,19 @@ export class BookingLifecycleService {
       await this.prisma.booking.update({
         where: { id: booking.id },
         data: { startOtpProviderRef: providerRef },
+      });
+      await this.notifications?.recordOtpDelivery({
+        dedupeKey: `booking-start-otp:${providerRef}`,
+        templateKey: 'booking.start_otp',
+        providerReference: providerRef,
+        phone: customer.phone,
+        recipientType: 'customer',
+        recipientId: customer.id,
+        bookingId: booking.id,
+        channel:
+          this.config.get<string>('SLIDE_DEFAULT_CHANNEL', 'whatsapp') === 'sms'
+            ? 'sms'
+            : 'whatsapp',
       });
     } catch (error) {
       // A failed send must not roll back the arrival — the Pro really is

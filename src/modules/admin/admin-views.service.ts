@@ -140,6 +140,18 @@ export class AdminViewsService {
           orderBy: { createdAt: 'desc' },
           take: 20,
         },
+        notificationLogs: {
+          where: allowedCityIds?.length
+            ? {
+                OR: [
+                  { bookingId: null },
+                  { booking: { address: { cityId: { in: allowedCityIds } } } },
+                ],
+              }
+            : {},
+          orderBy: { createdAt: 'desc' },
+          take: 50,
+        },
       },
     });
     if (!customer) throw new NotFoundException('Customer not found');
@@ -148,10 +160,6 @@ export class AdminViewsService {
       support: {
         available: false,
         reason: 'Module 11 Safety & Support is not implemented yet',
-      },
-      notifications: {
-        available: false,
-        reason: 'Module 12 Notifications is not implemented yet',
       },
     };
   }
@@ -189,6 +197,10 @@ export class AdminViewsService {
           where: { reviewerType: 'customer' },
           orderBy: { createdAt: 'desc' },
           take: 20,
+        },
+        notificationLogs: {
+          orderBy: { createdAt: 'desc' },
+          take: 50,
         },
       },
     });

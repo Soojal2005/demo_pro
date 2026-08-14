@@ -35,6 +35,7 @@ import {
   CreateBulkJobDto,
   CreateReportExportDto,
   PlatformSettingQueryDto,
+  ResetPlatformSettingDto,
   UpsertPlatformSettingDto,
 } from './dto/admin.dto';
 import { PlatformSettingsAdminService } from './platform-settings-admin.service';
@@ -144,7 +145,27 @@ export class AdminController {
       !actor.cityScope.includes(dto.cityId)
     )
       throw apiError('Outside your city scope', HttpStatus.FORBIDDEN);
-    return this.settings.upsert(key, dto.value, dto.cityId, actor.id);
+    return this.settings.upsert(
+      key,
+      dto.value,
+      dto.cityId,
+      actor.id,
+      dto.reason,
+      dto.confirmImpact,
+    );
+  }
+
+  @Get('platform-settings/:key/revisions')
+  @RequirePermissions(PermissionCode.PLATFORM_SETTING_READ)
+  @ApiOkEnvelope()
+  settingRevisions(
+    @Param('key') key: string,
+    @Query('cityId') cityId: string | undefined,
+    @CurrentUser() actor: AuthenticatedUser,
+  ) {
+    if (cityId && actor.cityScope?.length && !actor.cityScope.includes(cityId))
+      throw apiError('Outside your city scope', HttpStatus.FORBIDDEN);
+    return this.settings.revisions(key, cityId);
   }
 
   @Delete('platform-settings/:key')
@@ -153,11 +174,18 @@ export class AdminController {
   resetSetting(
     @Param('key') key: string,
     @Query('cityId', new ParseUUIDPipe({ version: '4' })) cityId: string,
+    @Body() dto: ResetPlatformSettingDto,
     @CurrentUser() actor: AuthenticatedUser,
   ) {
     if (actor.cityScope?.length && !actor.cityScope.includes(cityId))
       throw apiError('Outside your city scope', HttpStatus.FORBIDDEN);
-    return this.settings.removeOverride(key, cityId);
+    return this.settings.removeOverride(
+      key,
+      cityId,
+      actor.id,
+      dto.reason,
+      dto.confirmImpact,
+    );
   }
 
   @Post('bulk-jobs')

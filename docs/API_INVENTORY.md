@@ -439,33 +439,52 @@ Needed by **all three apps**.
 
 **Also in this module:** automatic no-start detection — when a Pro marks arrival but never starts within the grace window, a ticket is raised for ops by itself. The Pro is never told.
 
-## 2.2 Notifications (Module 12) — nothing exists
+## 2.2 Notifications (Module 12) — built
 
-No app-facing endpoints. It is a service other modules call.
+Notification intents are committed to an AWS PostgreSQL outbox alongside the
+Booking, Dispatch and Commission state change. A recoverable worker renders
+seeded templates, routes by ordered channel, tracks provider references and
+delivery state, clears permanently rejected device tokens, and immediately
+falls back for critical templates.
 
-- Push via FCM (Android) and APNs (iOS)
-- WhatsApp for OTP and transactional messages, SMS as fallback
-- Templates with per-template channel routing
-- Delivery status tracking
-- Per-booking notification history, for support
+| Access         | Method     | Path                                       | Purpose                                                  |
+| -------------- | ---------- | ------------------------------------------ | -------------------------------------------------------- |
+| Actor          | PUT/DELETE | `/notifications/push-token`                | Register, replace, or clear the one current device token |
+| Actor          | POST       | `/notifications/:id/read`                  | Mark the actor's own notification read                   |
+| Admin          | GET        | `/admin/notifications`                     | City-scoped delivery history                             |
+| Admin          | GET/PATCH  | `/admin/notifications/templates[/:key]`    | Read or update template routing/content                  |
+| Admin          | GET        | `/admin/notifications/bookings/:bookingId` | Reconstruct what support told both parties               |
+| Admin          | POST       | `/admin/notifications/:id/retry`           | Retry a failed or skipped delivery                       |
+| Public webhook | GET/POST   | `/webhooks/notifications/whatsapp`         | Meta verification and signed delivery callbacks          |
+| Public webhook | POST       | `/webhooks/notifications/sms`              | Signed SMS delivery callbacks                            |
 
-**What this blocks today:** a Pro is assigned a booking and **is never told**. The system records when it should have notified them, but nothing sends. Right now a Pro has to open the app and look.
+Local/test mode records mock provider references. Live mode uses Firebase Admin
+for Android FCM and iOS APNs payload delivery, Meta WhatsApp Business templates,
+and the configured SMS adapter. Existing Slide OTP sends are logged without
+ever persisting the OTP value. Safety templates are seeded but their triggers
+remain dormant until Module 11 exists.
 
-## 2.3 Config (Module 14) — model exists, no API
+## 2.3 Config & Server-Driven UI (Module 14) — built
 
-The `platform_settings` table holds ~20 numbers that control system behaviour, and each one can differ per city. **There is no way to read or change any of them except by editing the database directly.**
+Platform settings support global defaults, per-city overrides, effective-value
+resolution, actor/timestamp attribution and immutable revision history. The two
+dispatch cold-start priors require a reason and explicit impact confirmation.
 
-Needed:
+| Access | Method         | Path                                 | Purpose                                         |
+| ------ | -------------- | ------------------------------------ | ----------------------------------------------- |
+| Admin  | GET/PUT/DELETE | `/admin/platform-settings`           | List, override, or reset settings               |
+| Admin  | GET            | `/admin/platform-settings/revisions` | Read setting history                            |
+| Admin  | GET/POST       | `/admin/ui-configs`                  | List and create UI drafts                       |
+| Admin  | GET/PATCH      | `/admin/ui-configs/:id`              | Read or edit a draft                            |
+| Admin  | POST           | `/admin/ui-configs/:id/validate`     | Validate schema and catalog references          |
+| Admin  | POST           | `/admin/ui-configs/:id/publish`      | Publish and invalidate CloudFront               |
+| Admin  | POST           | `/admin/ui-configs/:id/rollback`     | Republish a historical version                  |
+| Public | GET            | `/ui-config/home`                    | Resolve context and return an immutable CDN URL |
 
-- Admin: list settings for a city
-- Admin: change one setting for a city
-- Admin: reset a setting to its default
-
-**What this blocks today — the important one:** `geo.enforceAreaServiceAvailability` ships **off**. The whole service-area system records which area a booking falls in, and logs that a booking _should_ have been refused, **but never actually refuses it**. Turning that gate on requires this API.
-
-Other settings behind the same gap: dispatch pool size, acknowledgement window, travel-time target, cancellation fee, tax percent, commission auto-approve window.
-
-**Also in Module 14:** `UiConfig` — server-driven home screen for the customer app, so the app's layout can change without an app-store release. Not built, and a bigger piece than settings.
+Resolution precedence is `city+segment`, `city+all`, `global+segment`, then
+`global+all`. The public endpoint requires `X-App-Version`; customer auth is
+optional and is used to derive the lifecycle segment. Publication fails closed
+unless both the versioned object upload and cache invalidation succeed.
 
 ## 2.4 Admin Console & Reporting (Module 15) — backend core built
 
@@ -504,12 +523,10 @@ notification sections in the 360 views.
 **1. Which of the four missing modules comes next?**
 Our suggested order, and why:
 
-| Order | Module                    | Why                                                                                    |
-| ----- | ------------------------- | -------------------------------------------------------------------------------------- |
-| 1     | **Config (14)**           | Smallest, and it unblocks the service-area gate that is already built but switched off |
-| 2     | **Notifications (12)**    | Pros are not being told about their assignments at all                                 |
-| 3     | **Safety & Support (11)** | Needed before launch — SOS and disputes                                                |
-| 4     | **Admin Console (15)**    | Reports and audit; useful, not blocking                                                |
+| Order | Module                    | Why                                                    |
+| ----- | ------------------------- | ------------------------------------------------------ |
+| 1     | **Notifications (12)**    | Pros are not being told about their assignments at all |
+| 2     | **Safety & Support (11)** | Needed before launch — SOS and disputes                |
 
 **2. Who builds Config?**
 It is a backend module, so it belongs with the backend developer. We are asking rather than starting, because a review module we built ourselves last week had to be deleted when the proper Module 10 landed and declared the same route. We would rather not repeat that.

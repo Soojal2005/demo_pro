@@ -5,11 +5,13 @@ import {
   NotFoundException,
   OnModuleDestroy,
   OnModuleInit,
+  Optional,
 } from '@nestjs/common';
 import { apiError } from '../../common/utils';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RedisService } from '../../redis/redis.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 const ACK_EVENT = 'assignment_acknowledged';
 const REBUILD_LOCK = 'jobs:pro-counters:rebuild';
@@ -31,6 +33,7 @@ export class ProCountersService implements OnModuleInit, OnModuleDestroy {
     private readonly prisma: PrismaService,
     private readonly redis: RedisService,
     private readonly config: ConfigService,
+    @Optional() private readonly notifications?: NotificationsService,
   ) {}
 
   onModuleInit(): void {
@@ -131,7 +134,7 @@ export class ProCountersService implements OnModuleInit, OnModuleDestroy {
           assignmentOutcome: 'acknowledged',
         },
       });
-      await tx.bookingStatusEvent.create({
+      const ackEvent = await tx.bookingStatusEvent.create({
         data: {
           bookingId,
           status: ACK_EVENT,
@@ -153,6 +156,22 @@ export class ProCountersService implements OnModuleInit, OnModuleDestroy {
               : pro.assignmentsAcknowledged / pro.assignmentsOffered,
         },
       });
+      if (this.notifications)
+        await this.notifications.enqueue(
+          {
+            eventKey: 'booking.acknowledged',
+            dedupeKey: `booking:${bookingId}:ack:${ackEvent.id}`,
+            templateKey: 'booking.assignment_confirmed',
+            recipientType: 'customer',
+            recipientId: booking.customerId,
+            bookingId,
+            variables: {
+              bookingNumber: booking.bookingNumber,
+              proName: pro.fullName ?? 'Your Homingo Pro',
+            },
+          },
+          tx,
+        );
     });
   }
 

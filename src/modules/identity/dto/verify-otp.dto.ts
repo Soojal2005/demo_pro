@@ -1,6 +1,14 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
-import { IsIn, IsOptional, IsString, Matches } from 'class-validator';
+import {
+  IsIn,
+  IsOptional,
+  IsString,
+  Matches,
+  MaxLength,
+  MinLength,
+  ValidateIf,
+} from 'class-validator';
 import type { ActorType } from '../../../common/types/authenticated-user.type';
 import { normalizePhone } from './phone.transform';
 
@@ -37,4 +45,18 @@ export class VerifyOtpDto {
   @IsOptional()
   @IsString()
   deviceId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Current device token. Replaces the previous device token.',
+  })
+  @ValidateIf((dto: VerifyOtpDto) => dto.pushPlatform !== undefined)
+  @IsString()
+  @MinLength(16)
+  @MaxLength(4096)
+  pushToken?: string;
+
+  @ApiPropertyOptional({ enum: ['android', 'ios'] })
+  @ValidateIf((dto: VerifyOtpDto) => dto.pushToken !== undefined)
+  @IsIn(['android', 'ios'])
+  pushPlatform?: 'android' | 'ios';
 }

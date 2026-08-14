@@ -19,6 +19,9 @@ import { ProsModule } from './modules/pros/pros.module';
 import { ReviewsModule } from './modules/reviews/reviews.module';
 import { TrainingModule } from './modules/training/training.module';
 import { AdminModule } from './modules/admin/admin.module';
+import { CdnModule } from './cdn/cdn.module';
+import { ConfigUiModule } from './modules/config-ui/config-ui.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
 
 // NODE_ENV picks the override file; `.env` is always the fallback beneath it.
 // ConfigModule gives the FIRST file that defines a variable precedence, so the
@@ -33,6 +36,7 @@ const nodeEnv = process.env.NODE_ENV ?? 'local';
       envFilePath: [`.env.${nodeEnv}`, '.env'],
     }),
     PrismaModule,
+    CdnModule,
     GeocodingModule,
     // Global, like geocoding, and for the same reason: dispatch, bookings and
     // geo all need road travel time and none of them can own it.
@@ -40,6 +44,7 @@ const nodeEnv = process.env.NODE_ENV ?? 'local';
     HealthModule,
     CatalogModule,
     IdentityModule,
+    NotificationsModule,
     CustomersModule,
     ProsModule,
     BookingsModule,
@@ -62,6 +67,7 @@ const nodeEnv = process.env.NODE_ENV ?? 'local';
     // Module 15 is an aggregation layer over the domain modules above. It is
     // last so it reuses their tables and services instead of owning copies.
     AdminModule,
+    ConfigUiModule,
   ],
   controllers: [AppController],
   providers: [AppService],

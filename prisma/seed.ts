@@ -77,6 +77,12 @@ async function main(): Promise<void> {
       'report.export',
       'report.analytics.read',
       'platformSetting.read',
+      'uiConfig.read',
+      'uiConfig.manage',
+      'uiConfig.publish',
+      'notification.read',
+      'notification.template.manage',
+      'notification.retry',
     ],
     // Support handles the cases a customer cannot self-serve: a mid-job stop
     // (window E) and the door-step OTP override.
@@ -97,6 +103,8 @@ async function main(): Promise<void> {
       'report.export',
       'report.analytics.read',
       'platformSetting.read',
+      'notification.read',
+      'notification.retry',
     ],
     // Commission rates are finance's call, not ops' — see US-3.10 / US-8.4.
     // Bank details and money leaving the platform are the same kind of call.

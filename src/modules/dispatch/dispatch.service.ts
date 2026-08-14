@@ -1,4 +1,4 @@
-import { HttpStatus, Injectable, Logger } from '@nestjs/common';
+import { HttpStatus, Injectable, Logger, Optional } from '@nestjs/common';
 import { apiError } from '../../common/utils';
 import type { AssignmentCandidate } from '../../prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -7,6 +7,8 @@ import { BookingStateService } from '../bookings/booking-state.service';
 import { AreasService } from '../geo/areas.service';
 import { CashEligibilityService } from '../payments/cash-eligibility.service';
 import { ProCountersService } from '../pros/pro-counters.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import type { NotificationIntent } from '../notifications/notification.types';
 import { DispatchScoringService } from './dispatch-scoring.service';
 import type {
   AssignmentOutcome,
@@ -49,6 +51,7 @@ export class DispatchService {
     private readonly counters: ProCountersService,
     private readonly cash: CashEligibilityService,
     private readonly areas: AreasService,
+    @Optional() private readonly notifications?: NotificationsService,
   ) {}
 
   // ------------------------------------------------------------------
@@ -264,6 +267,14 @@ export class DispatchService {
   ): Promise<void> {
     const proId = winner.proId;
     const now = new Date();
+    const notificationIntents = this.notifications
+      ? await this.assignmentIntents(
+          bookingId,
+          proId,
+          attemptNumber,
+          new Date(now.getTime() + ackWindowSeconds * 1000),
+        )
+      : [];
 
     await this.state.transition({
       bookingId,
@@ -280,6 +291,7 @@ export class DispatchService {
         acknowledgedAt: null,
         assignmentOutcome: 'pending_ack',
       },
+      notificationIntents,
     });
 
     // The other caller ProCountersService has been waiting for. Non-fatal for
@@ -299,6 +311,51 @@ export class DispatchService {
         error instanceof Error ? error.message : String(error),
       );
     }
+  }
+
+  private async assignmentIntents(
+    bookingId: string,
+    proId: string,
+    attemptNumber: number,
+    ackDeadline: Date,
+  ): Promise<NotificationIntent[]> {
+    const [booking, pro] = await Promise.all([
+      this.prisma.booking.findUnique({
+        where: { id: bookingId },
+        select: { bookingNumber: true, customerId: true },
+      }),
+      this.prisma.pro.findUnique({
+        where: { id: proId },
+        select: { fullName: true },
+      }),
+    ]);
+    if (!booking) return [];
+    const variables = {
+      bookingNumber: booking.bookingNumber,
+      proName: pro?.fullName ?? 'Your Homingo Pro',
+      ackDeadline: ackDeadline.toISOString(),
+    };
+    return [
+      {
+        eventKey: 'dispatch.assigned',
+        dedupeKey: `dispatch:${bookingId}:attempt:${attemptNumber}:pro`,
+        templateKey: 'dispatch.assignment_offered',
+        recipientType: 'pro',
+        recipientId: proId,
+        bookingId,
+        variables,
+      },
+      {
+        eventKey: attemptNumber > 1 ? 'booking.reassigned' : 'booking.assigned',
+        dedupeKey: `dispatch:${bookingId}:attempt:${attemptNumber}:customer`,
+        templateKey:
+          attemptNumber > 1 ? 'booking.pro_reassigned' : 'booking.pro_assigned',
+        recipientType: 'customer',
+        recipientId: booking.customerId,
+        bookingId,
+        variables,
+      },
+    ];
   }
 
   // ------------------------------------------------------------------

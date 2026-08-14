@@ -30,11 +30,13 @@ model City {
   timezone String
   isActive Boolean @default(true)
 
-  addresses        CustomerAddress[]
-  pros             Pro[]
-  platformSettings PlatformSetting[]
-  areas            Area[]
-  incentives       Incentive[]
+  addresses                CustomerAddress[]
+  pros                     Pro[]
+  platformSettings         PlatformSetting[]
+  platformSettingRevisions PlatformSettingRevision[]
+  uiConfigs                UiConfig[]
+  areas                    Area[]
+  incentives               Incentive[]
 
   @@index([isActive])
   @@map("cities")
@@ -263,9 +265,9 @@ model AdminUser {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  phone    String  @unique
+  phone    String @unique
   fullName String
-  email    String  @unique
+  email    String @unique
 
   /// Optional legacy Firebase identity. New Admins authenticate by phone OTP;
   /// existing Firebase-linked Admins remain compatible during migration.
@@ -287,6 +289,12 @@ model AdminUser {
   aadhaarDocumentVerifications ProApplication[]            @relation("AadhaarDocumentVerifier")
   panDocumentVerifications     ProApplication[]            @relation("PanDocumentVerifier")
   platformSettingsUpdated      PlatformSetting[]
+  platformSettingRevisions     PlatformSettingRevision[]
+  uiConfigsCreated             UiConfig[]                  @relation("UiConfigCreator")
+  uiConfigsPublished           UiConfig[]                  @relation("UiConfigPublisher")
+  notificationTemplatesUpdated NotificationTemplate[]      @relation("NotificationTemplateUpdater")
+  notificationOutbox           NotificationOutbox[]
+  notificationLogs             NotificationLog[]
   overriddenBookings           Booking[]                   @relation("BookingOverrideAdmin")
   approvedCommissionPayouts    CommissionPayout[]          @relation("PayoutApprover")
   suspendedPros                Pro[]                       @relation("ProSuspender")
@@ -300,7 +308,7 @@ model AdminUser {
   resolvedDiscrepancies        ReconciliationDiscrepancy[]
   hiddenReviews                Review[]                    @relation("ReviewModerator")
   markedTrainingAttendance     OfflineTrainingAttendance[] @relation("AttendanceMarker")
-  adminJobs                   AdminJob[]
+  adminJobs                    AdminJob[]
 
   @@map("admin_users")
 }
@@ -346,12 +354,14 @@ model Customer {
   ratingSum   Int @default(0)
   ratingCount Int @default(0)
 
-  addresses      CustomerAddress[]
-  bookings       Booking[]
-  recurringPlans RecurringPlan[]
-  reviews        Review[]
-  orders         Order[]
-  ledgerEntries  LedgerEntry[]
+  addresses          CustomerAddress[]
+  bookings           Booking[]
+  recurringPlans     RecurringPlan[]
+  reviews            Review[]
+  orders             Order[]
+  ledgerEntries      LedgerEntry[]
+  notificationOutbox NotificationOutbox[]
+  notificationLogs   NotificationLog[]
 
   @@index([status, createdAt])
   @@map("customers")
@@ -437,10 +447,10 @@ model Pro {
 
   /// Why the Pro was last suspended. Retained after reinstatement so the
   /// moderation history survives — cleared only by the next suspension.
-  suspendedReason       String?
-  suspendedAt           DateTime?
-  suspendedByAdminId    String?    @db.Uuid
-  suspendedByAdmin      AdminUser? @relation("ProSuspender", fields: [suspendedByAdminId], references: [id], onDelete: SetNull)
+  suspendedReason    String?
+  suspendedAt        DateTime?
+  suspendedByAdminId String?    @db.Uuid
+  suspendedByAdmin   AdminUser? @relation("ProSuspender", fields: [suspendedByAdminId], references: [id], onDelete: SetNull)
 
   approvedApplicationId String?         @unique @db.Uuid
   approvedApplication   ProApplication? @relation("ApprovedApplication", fields: [approvedApplicationId], references: [id], onDelete: SetNull)
@@ -501,6 +511,8 @@ model Pro {
   bookings             Booking[]
   startOtpVerifiedJobs Booking[]                   @relation("BookingStartOtpVerifier")
   photoProofs          JobPhotoProof[]
+  notificationOutbox   NotificationOutbox[]
+  notificationLogs     NotificationLog[]
   assignmentCandidates AssignmentCandidate[]
   reviews              Review[]
   commissions          BookingCommission[]
@@ -761,6 +773,8 @@ model Booking {
   /// Online only, and plural: an expired or voided order is reissued rather
   /// than mutated, so the gateway history stays readable by receipt.
   orders               Order[]
+  notificationOutbox   NotificationOutbox[]
+  notificationLogs     NotificationLog[]
 
   @@index([proId, status])
   @@index([customerId, createdAt])
@@ -1713,16 +1727,190 @@ model PlatformSetting {
   updatedAt DateTime @updatedAt
 
   key              String
-  cityId           String?    @db.Uuid
-  city             City?      @relation(fields: [cityId], references: [id], onDelete: Cascade)
+  cityId           String?                   @db.Uuid
+  city             City?                     @relation(fields: [cityId], references: [id], onDelete: Cascade)
   value            String
   description      String?
-  updatedByAdminId String?    @db.Uuid
-  updatedByAdmin   AdminUser? @relation(fields: [updatedByAdminId], references: [id], onDelete: SetNull)
+  updatedByAdminId String?                   @db.Uuid
+  updatedByAdmin   AdminUser?                @relation(fields: [updatedByAdminId], references: [id], onDelete: SetNull)
+  revisions        PlatformSettingRevision[]
 
   @@unique([key, cityId])
   @@index([cityId, key])
   @@map("platform_settings")
+}
+
+/// Focused audit history for the settings whose changes alter live platform
+/// behaviour. It deliberately does not reopen the deferred general AdminAuditLog.
+model PlatformSettingRevision {
+  id        String   @id @default(uuid()) @db.Uuid
+  createdAt DateTime @default(now())
+
+  settingId String?          @db.Uuid
+  setting   PlatformSetting? @relation(fields: [settingId], references: [id], onDelete: SetNull)
+  key       String
+  cityId    String?          @db.Uuid
+  city      City?            @relation(fields: [cityId], references: [id], onDelete: SetNull)
+
+  action           String
+  previousValue    String?
+  newValue         String?
+  reason           String
+  impactConfirmed  Boolean    @default(false)
+  changedByAdminId String?    @db.Uuid
+  changedByAdmin   AdminUser? @relation(fields: [changedByAdminId], references: [id], onDelete: SetNull)
+
+  @@index([key, cityId, createdAt])
+  @@index([changedByAdminId, createdAt])
+  @@map("platform_setting_revisions")
+}
+
+/// One immutable customer-home layout version. Drafts may be edited; a
+/// published row never is. targetKey avoids PostgreSQL nullable-unique gaps.
+model UiConfig {
+  id        String   @id @default(uuid()) @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  appType       String  @default("customer")
+  screenKey     String  @default("home")
+  targetKey     String
+  cityId        String? @db.Uuid
+  city          City?   @relation(fields: [cityId], references: [id], onDelete: Restrict)
+  userSegment   String
+  version       Int
+  schemaVersion Int     @default(1)
+  jsonTree      Json
+  minAppVersion String
+
+  status             String     @default("draft")
+  cdnKey             String?
+  cdnUrl             String?
+  createdByAdminId   String?    @db.Uuid
+  createdByAdmin     AdminUser? @relation("UiConfigCreator", fields: [createdByAdminId], references: [id], onDelete: SetNull)
+  publishedByAdminId String?    @db.Uuid
+  publishedByAdmin   AdminUser? @relation("UiConfigPublisher", fields: [publishedByAdminId], references: [id], onDelete: SetNull)
+  publishedAt        DateTime?
+  cacheInvalidatedAt DateTime?
+  publicationReason  String?
+
+  @@unique([targetKey, version])
+  @@index([targetKey, status, version])
+  @@index([cityId, userSegment, status])
+  @@map("ui_configs")
+}
+
+// =====================================================================
+// 12 · NOTIFICATIONS
+// =====================================================================
+
+/// Editable content and ordered channel policy. Templates are seeded, and
+/// unknown variables are rejected before an admin can activate a change.
+model NotificationTemplate {
+  id        String   @id @default(uuid()) @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  key                  String  @unique
+  description          String
+  eventType            String
+  isActive             Boolean @default(true)
+  isCritical           Boolean @default(false)
+  channels             Json
+  pushTitle            String?
+  pushBody             String?
+  whatsappTemplate     String?
+  smsBody              String?
+  allowedVariables     Json    @default("[]")
+  retryLimit           Int     @default(2)
+  fallbackDelaySeconds Int     @default(0)
+
+  updatedByAdminId String?    @db.Uuid
+  updatedByAdmin   AdminUser? @relation("NotificationTemplateUpdater", fields: [updatedByAdminId], references: [id], onDelete: SetNull)
+
+  @@index([eventType, isActive])
+  @@map("notification_templates")
+}
+
+/// Durable notification intent. Business services insert this beside their
+/// own state change; providers are called later by the worker.
+model NotificationOutbox {
+  id        String   @id @default(uuid()) @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  eventKey      String
+  dedupeKey     String     @unique
+  recipientType String
+  customerId    String?    @db.Uuid
+  customer      Customer?  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  proId         String?    @db.Uuid
+  pro           Pro?       @relation(fields: [proId], references: [id], onDelete: Cascade)
+  adminUserId   String?    @db.Uuid
+  adminUser     AdminUser? @relation(fields: [adminUserId], references: [id], onDelete: Cascade)
+  bookingId     String?    @db.Uuid
+  booking       Booking?   @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  templateKey   String
+  variablesJson Json
+
+  status        String    @default("queued")
+  attemptCount  Int       @default(0)
+  availableAt   DateTime  @default(now())
+  lockedAt      DateTime?
+  lockedBy      String?
+  processedAt   DateTime?
+  failureReason String?
+
+  logs NotificationLog[]
+
+  @@index([status, availableAt])
+  @@index([bookingId, createdAt])
+  @@map("notification_outbox")
+}
+
+/// One provider attempt. Provider acceptance and actual delivery remain
+/// distinct because push providers generally cannot prove a human saw it.
+model NotificationLog {
+  id        String   @id @default(uuid()) @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  outboxId        String?             @db.Uuid
+  outbox          NotificationOutbox? @relation(fields: [outboxId], references: [id], onDelete: SetNull)
+  dedupeKey       String
+  recipientType   String
+  customerId      String?             @db.Uuid
+  customer        Customer?           @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  proId           String?             @db.Uuid
+  pro             Pro?                @relation(fields: [proId], references: [id], onDelete: Cascade)
+  adminUserId     String?             @db.Uuid
+  adminUser       AdminUser?          @relation(fields: [adminUserId], references: [id], onDelete: Cascade)
+  recipientMasked String?
+  bookingId       String?             @db.Uuid
+  booking         Booking?            @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  channel           String
+  provider          String
+  templateKey       String
+  payloadJson       Json
+  status            String    @default("queued")
+  attemptNumber     Int       @default(1)
+  providerReference String?
+  failureCode       String?
+  failureReason     String?
+  sentAt            DateTime?
+  deliveredAt       DateTime?
+  failedAt          DateTime?
+  readAt            DateTime?
+
+  @@unique([dedupeKey, channel, attemptNumber])
+  @@index([bookingId, createdAt])
+  @@index([status, createdAt])
+  @@index([provider, providerReference])
+  @@index([customerId, createdAt])
+  @@index([proId, createdAt])
+  @@index([adminUserId, createdAt])
+  @@map("notification_logs")
 }
 
 /// Durable work submitted from the admin console. Bulk updates and report
@@ -1737,7 +1925,7 @@ model AdminJob {
   adminUser   AdminUser @relation(fields: [adminUserId], references: [id], onDelete: Restrict)
 
   /// bulk_update | report_export
-  jobType     String
+  jobType      String
   /// pros | pro_services | commission | operational | retention | city_performance
   targetEntity String
   filterJson   Json

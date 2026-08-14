@@ -130,6 +130,14 @@ export const PermissionCode = {
   REPORT_ANALYTICS_READ: 'report.analytics.read',
   PLATFORM_SETTING_READ: 'platformSetting.read',
   PLATFORM_SETTING_MANAGE: 'platformSetting.manage',
+  UI_CONFIG_READ: 'uiConfig.read',
+  UI_CONFIG_MANAGE: 'uiConfig.manage',
+  UI_CONFIG_PUBLISH: 'uiConfig.publish',
+
+  // --- Module 12 · Notifications -------------------------------------
+  NOTIFICATION_READ: 'notification.read',
+  NOTIFICATION_TEMPLATE_MANAGE: 'notification.template.manage',
+  NOTIFICATION_RETRY: 'notification.retry',
 } as const;
 
 export type PermissionCode =

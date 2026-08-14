@@ -48,6 +48,7 @@ describe('PlatformSettingsAdminService', () => {
           '1',
           undefined,
           'admin-1',
+          'Testing an unknown setting key',
         ),
       ),
     ).toBe(HttpStatus.BAD_REQUEST);
@@ -66,6 +67,7 @@ describe('PlatformSettingsAdminService', () => {
           '100',
           undefined,
           'admin-1',
+          'Testing lifecycle threshold validation',
         ),
       ),
     ).toBe(HttpStatus.BAD_REQUEST);
@@ -80,8 +82,63 @@ describe('PlatformSettingsAdminService', () => {
           '2.5',
           undefined,
           'admin-1',
+          'Testing fractional count rejection',
         ),
       ),
     ).toBe(HttpStatus.BAD_REQUEST);
+  });
+
+  it('requires explicit impact confirmation for rating-prior changes', async () => {
+    const prisma = { platformSetting: {} };
+    expect(
+      await statusOf(
+        new PlatformSettingsAdminService(prisma as never).upsert(
+          'dispatch.ratingPriorMean',
+          '4.2',
+          undefined,
+          'admin-1',
+          'Adjusting the platform cold-start prior',
+        ),
+      ),
+    ).toBe(HttpStatus.BAD_REQUEST);
+  });
+
+  it('writes the setting and its before/after revision atomically', async () => {
+    const tx = {
+      platformSetting: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'setting-1',
+          key: 'assignment.ackWindowSeconds',
+          cityId: null,
+          value: '120',
+        }),
+        update: jest.fn().mockResolvedValue({
+          id: 'setting-1',
+          value: '90',
+        }),
+      },
+      platformSettingRevision: { create: jest.fn() },
+    };
+    const prisma = {
+      $transaction: jest.fn((callback: (client: typeof tx) => unknown) =>
+        callback(tx),
+      ),
+    };
+
+    await new PlatformSettingsAdminService(prisma as never).upsert(
+      'assignment.ackWindowSeconds',
+      '90',
+      undefined,
+      'admin-1',
+      'Reduce acknowledgement latency for dispatch',
+    );
+
+    expect(tx.platformSettingRevision.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        previousValue: '120',
+        newValue: '90',
+        changedByAdminId: 'admin-1',
+      }),
+    });
   });
 });

@@ -1,4 +1,10 @@
-import { HttpStatus, Inject, Injectable, Logger } from '@nestjs/common';
+import {
+  HttpStatus,
+  Inject,
+  Injectable,
+  Logger,
+  Optional,
+} from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { apiError } from '../../common/utils';
 import type {
@@ -7,6 +13,7 @@ import type {
   ProBankAccount,
 } from '../../prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { toPaise } from '../payments/payments.money';
 import {
   COMMISSION_LEDGER_PORT,
@@ -35,6 +42,7 @@ export class PayoutDisbursementService {
     private readonly razorpayx: RazorpayXClient,
     @Inject(COMMISSION_LEDGER_PORT)
     private readonly ledger: CommissionLedgerPort,
+    @Optional() private readonly notifications?: NotificationsService,
   ) {}
 
   /**
@@ -277,6 +285,18 @@ export class PayoutDisbursementService {
         where: { payoutId: payout.id, status: 'approved' },
         data: { status: 'paid' },
       });
+      if (this.notifications)
+        await this.notifications.enqueue(
+          {
+            eventKey: 'commission.paid',
+            dedupeKey: `commission:payout:${payout.id}:paid`,
+            templateKey: 'commission.payout_processed',
+            recipientType: 'pro',
+            recipientId: payout.proId,
+            variables: { amount: payout.netAmount.toString() },
+          },
+          tx,
+        );
     });
 
     await this.ledger.recordDisbursement({
@@ -326,10 +346,31 @@ export class PayoutDisbursementService {
     });
     if (!payout || payout.status === 'paid') return;
 
-    await this.prisma.commissionPayout.update({
-      where: { id: payout.id },
-      data: { status: 'failed', failureReason: reason },
-    });
+    if (!this.notifications)
+      await this.prisma.commissionPayout.update({
+        where: { id: payout.id },
+        data: { status: 'failed', failureReason: reason },
+      });
+    else {
+      const notifications = this.notifications;
+      await this.prisma.$transaction(async (tx) => {
+        await tx.commissionPayout.update({
+          where: { id: payout.id },
+          data: { status: 'failed', failureReason: reason },
+        });
+        await notifications.enqueue(
+          {
+            eventKey: 'commission.failed',
+            dedupeKey: `commission:payout:${payout.id}:failed:${payout.attemptCount}`,
+            templateKey: 'commission.payout_failed',
+            recipientType: 'pro',
+            recipientId: payout.proId,
+            variables: {},
+          },
+          tx,
+        );
+      });
+    }
 
     this.logger.error(
       `Payout ${payout.id} failed at the bank: ${reason}. ` +
