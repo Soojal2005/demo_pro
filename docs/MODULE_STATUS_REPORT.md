@@ -31,10 +31,26 @@
 | 11  | Safety & Support          | SosAlert, SupportTicket, TicketMessage            | ⬜ Not started                                                               |
 | 12  | Notifications             | NotificationLog                                   | ⬜ Not started                                                               |
 | 13  | Geo & Routing             | Area, AreaService, ProArea                        | 🟡 **Mostly built** — areas, geocoding, ETA and WebSockets all live          |
-| 14  | Config & Server-Driven UI | PlatformSetting, UiConfig                         | 🟡 **Partial** — `PlatformSetting` model exists; no API, no UiConfig         |
-| 15  | Admin Console & Reporting | AdminJob _(audit storage deferred)_               | ⬜ Not started; `AdminAuditLog` explicitly deferred                          |
+| 14  | Config & Server-Driven UI | PlatformSetting, UiConfig                         | 🟡 **Partial** — settings API built through Module 15; no UiConfig           |
+| 15  | Admin Console & Reporting | AdminJob _(audit storage deferred)_               | 🟡 **Backend core built** — audit and admin WebSockets deferred by #63       |
 
 "Stubbed" means the model exists in `prisma/schema.prisma` because a built module needed it as a foreign key or counter source — not that the module is partly built.
+
+---
+
+## 15 · Admin Console & Reporting — backend core built 2026-08-13
+
+Module 15 reuses the existing admin routes and adds only the missing
+cross-module layer: admin context, polling dispatch snapshot, Customer/Pro 360,
+validated reassignment, platform-setting management, durable async bulk jobs,
+CSV/XLSX/PDF exports, and marketing analytics. `AdminJob` is now a real Prisma
+model and private report/error artifacts are downloaded through expiring S3
+links.
+
+The current delivery intentionally does **not** add `AdminAuditLog` or an admin
+WebSocket namespace (conflict #63). Modules 11 and 12 are still prerequisites
+for actual ticket/SOS/notification data; 360 responses label those sections
+unavailable rather than presenting misleading emptiness.
 
 ---
 
@@ -787,7 +803,7 @@ All 12 migrations were applied to a throwaway PostgreSQL 18 cluster (`initdb`, t
 | ------------------------------- | ---------------------------------------------------------------------------------------- |
 | `prisma migrate deploy`         | **12/12 applied**, including the three new ones                                          |
 | `migrate diff` live DB ↔ schema | **"No difference detected"** — the hand-written SQL produces exactly what Prisma expects |
-| `prisma db seed`                | 4 roles, admin, 2 cities, 5 categories, 3 services                                       |
+| `prisma db seed`                | 4 roles, admin, 2 cities, 14 categories, 25 services                                     |
 | Schema shape                    | 22 tables; `bookings` at **42 columns**, matching the ERD; both `serviceId`s now `uuid`  |
 | **Database guards**             | **18/18 rejected** — see below                                                           |
 | **Cash lifecycle cURL suite**   | **24/24 passed** — `test/manual/run-booking-lifecycle-curl.sh`                           |

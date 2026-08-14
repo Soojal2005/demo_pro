@@ -714,6 +714,12 @@ AdminJob [icon: edit, color: gray] {
   completedAt datetime
 }
 
+// IMPLEMENTATION NOTE (2026-08-13): Module 15 now persists this entity as
+// `admin_jobs`. The implementation adds createdAt/updatedAt, progress counters,
+// requesterIp, failureReason, and stores `resultFileKey` rather than a signed
+// URL; download URLs are generated with a 15-minute expiry. `AdminAuditLog`
+// remains deliberately deferred by CONFLICTS_AND_DECISIONS #2/#63.
+
 // =========================================================
 // 11 · LEDGER & RECONCILIATION  (Scope 05-G)
 // =========================================================
@@ -931,6 +937,8 @@ These are decided, and each has a numbered entry in
 | ERD says                                       | Implementation                                  | Decision |
 | ---------------------------------------------- | ----------------------------------------------- | -------- |
 | `AdminAuditLog` is a table                     | Dropped                                         | #2       |
+| Admin login is phone OTP only                  | Firebase password/Google token exchange         | #64      |
+| `AdminJob.resultFileUrl` is stored             | Private S3 key stored; URL minted per download  | #63      |
 | `ProApplication.digilocker*`, `*Source`        | DigiLocker path not implemented or accepted     | #3       |
 | `CustomerAddress` has no delivery-notes column | Matches — the column was reverted               | #1       |
 | `Service` has no `allowsCash`                  | Matches — the ground rule's column is not added | #13      |

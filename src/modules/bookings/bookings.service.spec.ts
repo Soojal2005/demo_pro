@@ -12,9 +12,19 @@ function buildDeps() {
       update: jest.fn(),
       findUnique: jest.fn(),
       findMany: jest.fn(),
+      count: jest.fn().mockResolvedValue(0),
     },
-    bookingStatusEvent: { findFirst: jest.fn().mockResolvedValue(null) },
+    pro: { findUnique: jest.fn() },
+    bookingStatusEvent: {
+      findFirst: jest.fn().mockResolvedValue(null),
+      create: jest.fn(),
+    },
     $queryRaw: jest.fn().mockResolvedValue([{ nextval: 7n }]),
+    $transaction: jest
+      .fn()
+      .mockImplementation((callback: (tx: unknown) => unknown) =>
+        callback(prisma),
+      ),
   };
   const state = {
     transition: jest
@@ -161,6 +171,84 @@ describe('BookingsService', () => {
       );
       expect(transitions).toEqual(['awaiting_payment']);
       expect(deps.dispatch.requestAssignment).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('admin reassignment', () => {
+    const assigned = {
+      id: 'booking-1',
+      status: 'assigned',
+      serviceId: 'svc-1',
+      address: { cityId: 'city-1' },
+      slotStartAt: null,
+      slotEndAt: null,
+    };
+
+    it('refuses a scoped admin from another city', async () => {
+      const deps = buildDeps();
+      deps.prisma.booking.findUnique.mockResolvedValue(assigned);
+      const status = await captureStatus(
+        buildService(deps).reassignByAdmin(
+          'booking-1',
+          { mode: 'redispatch', reason: 'Customer requested a new Pro' },
+          'admin-1',
+          ['city-2'],
+        ),
+      );
+      expect(status).toBe(HttpStatus.FORBIDDEN);
+    });
+
+    it('returns an assigned booking to dispatch with the required reason', async () => {
+      const deps = buildDeps();
+      deps.prisma.booking.findUnique.mockResolvedValue(assigned);
+      deps.prisma.booking.update.mockResolvedValue({
+        ...assigned,
+        status: 'assigning',
+        proId: null,
+      });
+
+      await buildService(deps).reassignByAdmin(
+        'booking-1',
+        { mode: 'redispatch', reason: 'Professional is no longer reachable' },
+        'admin-1',
+        ['city-1'],
+      );
+
+      expect(deps.prisma.booking.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            status: 'assigning',
+            overrideReason: 'Professional is no longer reachable',
+          }),
+        }),
+      );
+      expect(deps.dispatch.requestAssignment).toHaveBeenCalledWith('booking-1');
+    });
+
+    it('validates the replacement Pro before changing the booking', async () => {
+      const deps = buildDeps();
+      deps.prisma.booking.findUnique.mockResolvedValue(assigned);
+      deps.prisma.pro.findUnique.mockResolvedValue({
+        status: 'approved',
+        isAvailable: true,
+        cityId: 'city-1',
+        services: [],
+      });
+
+      const status = await captureStatus(
+        buildService(deps).reassignByAdmin(
+          'booking-1',
+          {
+            mode: 'specific_pro',
+            proId: 'pro-2',
+            reason: 'Customer requested a different professional',
+          },
+          'admin-1',
+          ['city-1'],
+        ),
+      );
+      expect(status).toBe(HttpStatus.CONFLICT);
+      expect(deps.prisma.booking.update).not.toHaveBeenCalled();
     });
   });
 
@@ -311,6 +399,38 @@ describe('BookingsService', () => {
         [{ data: { bookingNumber: string } }],
       ];
       expect(call.data.bookingNumber).toMatch(/^HB-\d{4}-000007$/);
+    });
+
+    it('retries when an imported booking left the sequence behind', async () => {
+      const deps = buildDeps();
+      deps.catalog.assertBookable.mockResolvedValue(service90min);
+      deps.prisma.$queryRaw
+        .mockResolvedValueOnce([{ nextval: 7n }])
+        .mockResolvedValueOnce([{ nextval: 8n }]);
+      deps.prisma.booking.create
+        .mockRejectedValueOnce(
+          Object.assign(new Error('duplicate booking number'), {
+            code: 'P2002',
+            meta: { target: ['bookingNumber'] },
+          }),
+        )
+        .mockImplementationOnce(({ data }: { data: object }) =>
+          Promise.resolve({ id: 'booking-1', status: 'created', ...data }),
+        );
+      const bookings = buildService(deps);
+
+      await bookings.create('cust-1', {
+        serviceId: 'svc-1',
+        addressId: 'addr-1',
+        paymentMode: 'cash',
+      });
+
+      expect(deps.prisma.booking.create).toHaveBeenCalledTimes(2);
+      expect(deps.prisma.booking.create).toHaveBeenLastCalledWith({
+        data: expect.objectContaining({
+          bookingNumber: expect.stringMatching(/000008$/),
+        }),
+      });
     });
   });
 });

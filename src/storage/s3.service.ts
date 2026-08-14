@@ -96,4 +96,20 @@ export class S3Service {
 
     return { viewUrl, expiresIn: ttlSeconds };
   }
+
+  /** Writes a server-generated private artifact such as an admin report. */
+  async putPrivateObject(
+    key: string,
+    body: Buffer,
+    contentType: string,
+  ): Promise<void> {
+    await this.client.send(
+      new PutObjectCommand({
+        Bucket: this.bucket,
+        Key: key,
+        Body: body,
+        ContentType: contentType,
+      }),
+    );
+  }
 }

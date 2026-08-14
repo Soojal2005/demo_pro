@@ -267,11 +267,9 @@ model AdminUser {
   fullName String
   email    String  @unique
 
-  /// Firebase Authentication uid. The only login path for admins (password
-  /// or Google, both via Firebase) — Firebase proves identity, this column
-  /// is what AuthService.loginWithFirebase() matches against to decide
-  /// authorization. No AdminUser row = no access, however Firebase verified them.
-  firebaseUid String @unique
+  /// Optional legacy Firebase identity. New Admins authenticate by phone OTP;
+  /// existing Firebase-linked Admins remain compatible during migration.
+  firebaseUid String? @unique
 
   roleId String @db.Uuid
   role   Role   @relation(fields: [roleId], references: [id], onDelete: Restrict)
@@ -302,6 +300,7 @@ model AdminUser {
   resolvedDiscrepancies        ReconciliationDiscrepancy[]
   hiddenReviews                Review[]                    @relation("ReviewModerator")
   markedTrainingAttendance     OfflineTrainingAttendance[] @relation("AttendanceMarker")
+  adminJobs                   AdminJob[]
 
   @@map("admin_users")
 }
@@ -1724,4 +1723,43 @@ model PlatformSetting {
   @@unique([key, cityId])
   @@index([cityId, key])
   @@map("platform_settings")
+}
+
+/// Durable work submitted from the admin console. Bulk updates and report
+/// exports are intentionally asynchronous so an HTTP timeout cannot leave ops
+/// guessing whether half a city was changed.
+model AdminJob {
+  id        String   @id @default(uuid()) @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  adminUserId String    @db.Uuid
+  adminUser   AdminUser @relation(fields: [adminUserId], references: [id], onDelete: Restrict)
+
+  /// bulk_update | report_export
+  jobType     String
+  /// pros | pro_services | commission | operational | retention | city_performance
+  targetEntity String
+  filterJson   Json
+  changesJson  Json?
+  /// csv | xlsx | pdf; null for bulk updates
+  format       String?
+
+  /// queued | running | completed | partial | failed
+  status         String @default("queued")
+  totalCount     Int    @default(0)
+  processedCount Int    @default(0)
+  succeededCount Int    @default(0)
+  failedCount    Int    @default(0)
+
+  /// Private S3 object key. A fresh short-lived URL is generated per download.
+  resultFileKey String?
+  failureReason String?
+  requesterIp   String?
+  startedAt     DateTime?
+  completedAt   DateTime?
+
+  @@index([adminUserId, createdAt])
+  @@index([status, createdAt])
+  @@map("admin_jobs")
 }

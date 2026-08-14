@@ -88,6 +88,20 @@ export function ApiCreatedEnvelope(
   );
 }
 
+/** 202 Accepted, enveloped. Use for work that has been durably queued. */
+export function ApiAcceptedEnvelope(
+  dto?: Type<unknown>,
+  options: EnvelopeOptions = {},
+): MethodDecorator {
+  return applyDecorators(
+    ...(dto ? [ApiExtraModels(dto)] : []),
+    ApiResponse({
+      status: HttpStatus.ACCEPTED,
+      schema: envelopeSchema(dataSchemaFor(dto, options.isArray ?? false)),
+    }),
+  );
+}
+
 const STATUS_DESCRIPTIONS: Partial<Record<HttpStatus, string>> = {
   [HttpStatus.BAD_REQUEST]: 'Validation failed',
   [HttpStatus.UNAUTHORIZED]: 'Missing or invalid credentials',

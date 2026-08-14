@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Controller,
   Get,
   HttpStatus,
@@ -53,7 +54,17 @@ export class AdminDispatchController {
   @ApiOkEnvelope()
   @ApiErrorEnvelope(HttpStatus.UNAUTHORIZED, HttpStatus.FORBIDDEN)
   drain(@Query('max') max?: string) {
-    return this.dispatch.drain(max ? Number(max) : undefined);
+    let parsedMax: number | undefined;
+    if (max !== undefined) {
+      if (!/^\d+$/.test(max)) {
+        throw new BadRequestException('max must be an integer from 0 to 100');
+      }
+      parsedMax = Number(max);
+      if (parsedMax > 100) {
+        throw new BadRequestException('max must be an integer from 0 to 100');
+      }
+    }
+    return this.dispatch.drain(parsedMax);
   }
 
   @Post('bookings/:id/run')
@@ -117,6 +128,12 @@ export class AdminDispatchController {
   @ApiOkEnvelope()
   @ApiErrorEnvelope(HttpStatus.UNAUTHORIZED, HttpStatus.FORBIDDEN)
   expire(@Query('at') at?: string) {
-    return this.dispatch.expireAcknowledgements(at ? new Date(at) : undefined);
+    if (!at) return this.dispatch.expireAcknowledgements();
+
+    const parsedAt = new Date(at);
+    if (Number.isNaN(parsedAt.getTime())) {
+      throw new BadRequestException('at must be a valid ISO-8601 timestamp');
+    }
+    return this.dispatch.expireAcknowledgements(parsedAt);
   }
 }

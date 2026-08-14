@@ -59,6 +59,7 @@ import {
   exports: [
     ProCountersService,
     ProsService,
+    ProServiceAssignmentsService,
     TRAINING_GATE_PORT,
     PRO_LOCATION_RESOLVER_PORT,
   ],

@@ -14,6 +14,11 @@ export class AdminCustomerQueryDto {
       'Matches phone, email or full name (partial, case-insensitive).',
   })
   @IsOptional()
+  @Transform(({ value }): unknown => {
+    if (typeof value !== 'string') return value;
+    const trimmed = value.trim();
+    return /^\+\d+$/.test(trimmed) ? trimmed.slice(1) : trimmed;
+  })
   @IsString()
   @MaxLength(200)
   search?: string;
@@ -25,9 +30,10 @@ export class AdminCustomerQueryDto {
 
   @ApiPropertyOptional()
   @IsOptional()
-  @Transform(({ value }): unknown => {
-    if (value === 'true') return true;
-    if (value === 'false') return false;
+  @Transform(({ value, obj, key }): unknown => {
+    const raw = (obj as Record<string, unknown>)[key];
+    if (raw === 'true') return true;
+    if (raw === 'false') return false;
     return value;
   })
   @IsBoolean()

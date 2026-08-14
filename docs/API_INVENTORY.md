@@ -378,15 +378,15 @@ The **Permission** column applies to admin endpoints only. It is the grant an ad
 
 #### Auth (all three apps)
 
-| Method | Path                         | What it does                                                               | Permission |
-| ------ | ---------------------------- | -------------------------------------------------------------------------- | ---------- |
-| POST   | `/auth/guest-session`        | Create/resume a guest customer session from a device id                    | —          |
-| POST   | `/auth/otp/request`          | Send an OTP to a phone number                                              | —          |
-| POST   | `/auth/otp/verify`           | Verify an OTP and receive a token pair                                     | —          |
-| POST   | `/auth/admin/firebase-login` | Log in as an admin via Firebase (password or Google sign-in on the client) | —          |
-| POST   | `/auth/refresh`              | Rotate a refresh token for a new token pair                                | —          |
-| POST   | `/auth/logout`               | Revoke the session tied to one refresh token                               | —          |
-| POST   | `/auth/logout-all`           | Revoke every session for the current identity                              | —          |
+| Method | Path                         | What it does                                                  | Permission |
+| ------ | ---------------------------- | ------------------------------------------------------------- | ---------- |
+| POST   | `/auth/guest-session`        | Create/resume a guest customer session from a device id       | —          |
+| POST   | `/auth/otp/request`          | Send a Slide OTP for a Customer, Pro, or existing Admin phone | —          |
+| POST   | `/auth/otp/verify`           | Verify the OTP and receive an actor-scoped token pair         | —          |
+| POST   | `/auth/admin/firebase-login` | Legacy login for Admin rows already linked to Firebase        | —          |
+| POST   | `/auth/refresh`              | Rotate a refresh token for a new token pair                   | —          |
+| POST   | `/auth/logout`               | Revoke the session tied to one refresh token                  | —          |
+| POST   | `/auth/logout-all`           | Revoke every session for the current identity                 | —          |
 
 #### Public browsing (no login)
 
@@ -467,14 +467,29 @@ Other settings behind the same gap: dispatch pool size, acknowledgement window, 
 
 **Also in Module 14:** `UiConfig` — server-driven home screen for the customer app, so the app's layout can change without an app-store release. Not built, and a bigger piece than settings.
 
-## 2.4 Admin Console & Reporting (Module 15) — partially covered
+## 2.4 Admin Console & Reporting (Module 15) — backend core built
 
-Some of this module's features were built inside other modules. What is genuinely missing:
+The existing module-specific admin routes remain the operational source of
+truth. Module 15 adds the cross-module aggregation and asynchronous surfaces:
 
-- **Report exports** — CSV / XLSX / PDF, generated async, filterable by Pro, city, service, date range. Report types: commission, operational, retention, city performance
-- **Bulk operations surface** — mass edits that run async with a downloadable error log, so ops is never doing one-by-one changes
-- **Audit log** — every mutating admin action with before/after state and IP. The document is explicit that this must include every availability toggle, so "why did this Pro get no jobs on Tuesday" stays answerable
-- **Analytics** — bookings, revenue and retention, structured for marketing
+| Method         | Path                                                         | Purpose                                                              |
+| -------------- | ------------------------------------------------------------ | -------------------------------------------------------------------- |
+| GET            | `/admin/me`                                                  | Current role, permission set and city scope                          |
+| GET            | `/admin/dispatch/live-map`                                   | City-scoped polling snapshot of live bookings and Pros               |
+| GET            | `/admin/customers/:id/360`                                   | Customer, bookings, orders, refunds and reviews in one read          |
+| GET            | `/admin/pros/:id/360`                                        | Pro standing, raw acceptance counts, services, training and earnings |
+| POST           | `/admin/bookings/:id/reassign`                               | Validated specific-Pro override or redispatch                        |
+| GET/PUT/DELETE | `/admin/platform-settings`                                   | Effective settings and city overrides                                |
+| POST           | `/admin/bulk-jobs`                                           | Async Pro availability or Pro-service activation job                 |
+| POST           | `/admin/reports/exports`                                     | Async CSV/XLSX/PDF report export                                     |
+| GET            | `/admin/jobs`, `/admin/jobs/:id`, `/admin/jobs/:id/download` | Progress and private artifact download                               |
+| GET            | `/admin/analytics/overview`                                  | Bookings, GMV, platform revenue and dispatch outcomes                |
+| GET            | `/admin/analytics/retention`                                 | 30/60/90-day repeat cohorts                                          |
+| GET            | `/admin/analytics/cities`                                    | City performance aggregates                                          |
+
+Explicitly deferred by conflict #63: general administrative audit storage and
+admin WebSockets. Modules 11/12 are still required to populate ticket, SOS and
+notification sections in the 360 views.
 
 ## 2.5 Two smaller gaps
 

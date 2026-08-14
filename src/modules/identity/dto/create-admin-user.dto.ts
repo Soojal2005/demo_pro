@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Transform } from 'class-transformer';
 import {
   IsArray,
   IsEmail,
@@ -6,13 +7,14 @@ import {
   IsString,
   IsUUID,
   Matches,
-  MinLength,
 } from 'class-validator';
+import { normalizePhone } from './phone.transform';
 
 export class CreateAdminUserDto {
   @ApiProperty({ example: '+919876500000' })
-  @Matches(/^\+?[1-9]\d{7,14}$/, {
-    message: 'phone must be a valid number in international format',
+  @Transform(({ value }: { value: unknown }) => normalizePhone(value))
+  @Matches(/^\+[1-9]\d{7,14}$/, {
+    message: 'phone must be E.164 or a valid 10-digit Indian mobile number',
   })
   phone: string;
 
@@ -20,19 +22,10 @@ export class CreateAdminUserDto {
   @IsString()
   fullName: string;
 
-  /** The new admin's login identity — also the Google-account match key. */
+  /** Contact and audit email; Admin authentication uses the phone OTP flow. */
   @ApiProperty()
   @IsEmail()
   email: string;
-
-  /**
-   * Initial password, provisioned directly into Firebase Authentication.
-   * Never persisted on AdminUser — Firebase owns it from here on.
-   */
-  @ApiProperty({ minLength: 8 })
-  @IsString()
-  @MinLength(8)
-  password: string;
 
   @ApiProperty()
   @IsUUID()

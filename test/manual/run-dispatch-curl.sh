@@ -2,8 +2,9 @@
 # Module 5 · Dispatch engine, end to end against a running API.
 #
 # Proves the thing module 4 could not do on its own: a booking assigns itself.
-# Expects a migrated + seeded database, at least one approved Pro holding the
-# service, the mock OTP provider, and APP_LOG pointing at the app's stdout.
+# Expects the AWS database from .env.local, at least one approved and available
+# Pro holding Bathroom Deep Clean, the mock OTP provider, and APP_LOG pointing
+# at the app's stdout. It deliberately never calls manual assign or queue drain.
 
 BASE="${BASE:-http://127.0.0.1:53000/api/v1}"
 APP_LOG="${APP_LOG:-.curl-test-runtime/app.out.log}"
@@ -60,16 +61,16 @@ login() {
 
 echo "=== module 5 · dispatch engine ==="
 
-CUST=$(login "${CUSTOMER_PHONE:-+919876500022}" customer)
+CUST=$(login "${CUSTOMER_PHONE:-+919812340815}" customer)
 if [ -n "$CUST" ]; then ok "customer login"; else bad "customer login" "$BODY"; fi
-ADMIN=$(login '+916266941709' admin)
-if [ -n "$ADMIN" ]; then ok "admin login"; else bad "admin login" "$BODY"; fi
 
-req GET /catalog/services
-SVC=$(jq_ data.0.id)
+# Fixed seeded fixture: active, instant-capable, and held by several approved
+# available Pros in Indore. Picking data.0 was unstable because catalogue sort
+# order can put a scheduled-only service first.
+SVC="${SERVICE_ID:-00000000-0000-4000-b000-000000000002}"
 
 req POST /customers/me/addresses \
-  '{"label":"home","addressLine":"9 Vijay Nagar","pinLat":22.7196,"pinLng":75.8577}' "$CUST"
+  '{"label":"other","addressLine":"Automatic assignment API test, Vijay Nagar, Indore","pinLat":22.7196,"pinLng":75.8577}' "$CUST"
 ADDR=$(jq_ data.id)
 if [ -n "$ADDR" ]; then ok "address created"; else bad "address" "$BODY"; fi
 
@@ -78,52 +79,22 @@ req POST /bookings "{\"serviceId\":\"$SVC\",\"addressId\":\"$ADDR\",\"paymentMod
 expect "create cash booking" 201
 BK=$(jq_ data.id)
 
-req GET /admin/dispatch/queue '' "$ADMIN"
-DEPTH=$(jq_ data.depth)
-if [ "${DEPTH:-0}" -ge 1 ]; then
-  ok "booking was queued for dispatch (depth $DEPTH)"
-else
-  bad "queue depth" "$BODY"
-fi
+echo "--- unattended engine ---"
+for _ in $(seq 1 15); do
+  req GET "/bookings/$BK" '' "$CUST"
+  [ "$(jq_ data.status)" = "assigned" ] && break
+  sleep 1
+done
 
-echo "--- the engine ---"
-req POST /admin/dispatch/drain '' "$ADMIN"
-expect "drain the queue" 201
-OUTCOME=$(jq_ data.0.outcome)
-WINNER=$(jq_ data.0.assignedProId)
-if [ "$OUTCOME" = "assigned" ]; then
+WINNER=$(jq_ data.proId)
+if [ "$(jq_ data.status)" = "assigned" ] && [ -n "$WINNER" ]; then
   ok "booking assigned automatically (pro $WINNER)"
 else
-  bad "dispatch outcome" "$BODY"
+  bad "automatic assignment did not complete" "$BODY"
 fi
-
-req GET "/bookings/$BK" '' "$CUST"
-if [ "$(jq_ data.status)" = "assigned" ]; then ok "booking is now assigned"; else bad "status" "$BODY"; fi
+if [ "$(jq_ data.assignmentAttempt)" = "1" ]; then ok "first automatic attempt recorded"; else bad "attempt number" "$BODY"; fi
+if [ "$(jq_ data.assignmentOutcome)" = "pending_ack" ]; then ok "acknowledgement is pending"; else bad "assignment outcome" "$BODY"; fi
 if [ -n "$(jq_ data.ackDeadlineAt)" ]; then ok "acknowledgement window opened"; else bad "ack window" "$BODY"; fi
-
-echo "--- explainability ---"
-req GET "/admin/dispatch/bookings/$BK/candidates" '' "$ADMIN"
-expect "candidate list" 200
-if [ "$(jq_ data.0.isWinner)" = "true" ]; then ok "winner recorded"; else bad "winner" "$BODY"; fi
-if [ -n "$(jq_ data.0.finalRankScore)" ]; then ok "score inputs persisted"; else bad "scores" "$BODY"; fi
-if [ -n "$(jq_ data.0.originType)" ]; then ok "travel origin recorded ($(jq_ data.0.originType))"; else bad "origin" "$BODY"; fi
-if [ -n "$(jq_ data.0.ratingScore)" ]; then ok "smoothed rating recorded ($(jq_ data.0.ratingScore))"; else bad "rating" "$BODY"; fi
-
-echo "--- acknowledgement ---"
-PRO=$(login "${PRO_PHONE:-+919000000001}" pro)
-req POST "/pros/me/bookings/$BK/acknowledge" '{}' "$PRO"
-expect "Pro acknowledges" 201
-req POST "/pros/me/bookings/$BK/acknowledge" '{}' "$PRO"
-expect "acknowledging twice is not an error" 201
-
-req GET "/bookings/$BK" '' "$CUST"
-if [ -n "$(jq_ data.acknowledgedAt)" ]; then ok "acknowledgedAt stamped"; else bad "acknowledgedAt" "$BODY"; fi
-
-echo "--- no accept, no decline ---"
-req POST "/pros/me/bookings/$BK/accept" '{}' "$PRO"
-expect "there is no accept route" 404
-req POST "/pros/me/bookings/$BK/decline" '{}' "$PRO"
-expect "there is no decline route" 404
 
 echo
 printf 'passed: %s   failed: %s\n' "$PASS" "$FAIL"

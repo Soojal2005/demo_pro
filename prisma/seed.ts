@@ -43,6 +43,15 @@ async function ensureFirebaseUser(): Promise<string> {
 }
 
 async function main(): Promise<void> {
+  // Catalogue-only mode is safe for local/staging refreshes: it avoids the
+  // Firebase bootstrap and leaves roles/admin accounts untouched. Area
+  // fixtures are excluded too: catalogue refreshes must not rewrite a live
+  // city's operational coverage map.
+  if (process.argv.includes('--catalog-only')) {
+    await seedCatalog({ seedAreas: false });
+    return;
+  }
+
   const firebaseUid = await ensureFirebaseUser();
   const definitions = {
     ops: [
@@ -59,6 +68,15 @@ async function main(): Promise<void> {
       'review.moderate',
       // Ops counts the cash a Pro hands back; ops cannot refund a customer.
       'payment.cash.handover.confirm',
+      'admin.dashboard.read',
+      'customer.read',
+      'pro.read',
+      'dispatch.read',
+      'admin.job.read',
+      'admin.bulk.execute',
+      'report.export',
+      'report.analytics.read',
+      'platformSetting.read',
     ],
     // Support handles the cases a customer cannot self-serve: a mid-job stop
     // (window E) and the door-step OTP override.
@@ -71,6 +89,14 @@ async function main(): Promise<void> {
       // Support answers "where is my money" and needs to see an order and its
       // attempts. It cannot send money back.
       'payment.read',
+      'admin.dashboard.read',
+      'customer.read',
+      'pro.read',
+      'dispatch.read',
+      'admin.job.read',
+      'report.export',
+      'report.analytics.read',
+      'platformSetting.read',
     ],
     // Commission rates are finance's call, not ops' — see US-3.10 / US-8.4.
     // Bank details and money leaving the platform are the same kind of call.
@@ -79,6 +105,17 @@ async function main(): Promise<void> {
       'pro.bankAccount.verify',
       'payment.read',
       'payment.refund',
+      'payout.read',
+      'payout.approve',
+      'payout.adjust',
+      'ledger.read',
+      'ledger.audit',
+      'admin.dashboard.read',
+      'pro.read',
+      'admin.job.read',
+      'report.export',
+      'report.analytics.read',
+      'platformSetting.read',
     ],
     super_admin: ALL_PERMISSION_CODES,
   } as const;
@@ -112,7 +149,7 @@ async function main(): Promise<void> {
     },
   });
 
-  await seedCatalog();
+  await seedCatalog({ seedAreas: true });
 
   console.log(
     `Seeded four system roles and admin user (${SEED_ADMIN_PHONE}, ${SEED_ADMIN_EMAIL}).`,
@@ -120,12 +157,12 @@ async function main(): Promise<void> {
 }
 
 /**
- * A minimal but realistic catalogue, so Booking, Dispatch and Commission have
- * something to point at before their own modules exist. Ids are fixed so
+ * A realistic development catalogue spanning common home-service trades, so
+ * Booking, Dispatch and Commission have representative data. Ids are fixed so
  * re-running the seed is idempotent and so integration tests can hard-code
  * them.
  */
-async function seedCatalog(): Promise<void> {
+async function seedCatalog(options: { seedAreas: boolean }): Promise<void> {
   const cities = [
     {
       id: '00000000-0000-4000-9000-000000000001',
@@ -165,6 +202,34 @@ async function seedCatalog(): Promise<void> {
       parentSlug: null,
     },
     {
+      id: '00000000-0000-4000-a000-000000000003',
+      slug: 'plumber',
+      name: 'Plumber',
+      sortOrder: 3,
+      parentSlug: null,
+    },
+    {
+      id: '00000000-0000-4000-a000-000000000004',
+      slug: 'electrician',
+      name: 'Electrician',
+      sortOrder: 4,
+      parentSlug: null,
+    },
+    {
+      id: '00000000-0000-4000-a000-000000000005',
+      slug: 'carpenter',
+      name: 'Carpenter',
+      sortOrder: 5,
+      parentSlug: null,
+    },
+    {
+      id: '00000000-0000-4000-a000-000000000006',
+      slug: 'pest-control',
+      name: 'Pest Control',
+      sortOrder: 6,
+      parentSlug: null,
+    },
+    {
       id: '00000000-0000-4000-a000-000000000011',
       slug: 'deep-cleaning',
       name: 'Deep Cleaning',
@@ -184,6 +249,41 @@ async function seedCatalog(): Promise<void> {
       name: 'AC Service',
       sortOrder: 1,
       parentSlug: 'appliance-repair',
+    },
+    {
+      id: '00000000-0000-4000-a000-000000000022',
+      slug: 'appliance-installation',
+      name: 'Appliance Installation',
+      sortOrder: 2,
+      parentSlug: 'appliance-repair',
+    },
+    {
+      id: '00000000-0000-4000-a000-000000000031',
+      slug: 'plumbing-repairs',
+      name: 'Plumbing Repairs',
+      sortOrder: 1,
+      parentSlug: 'plumber',
+    },
+    {
+      id: '00000000-0000-4000-a000-000000000041',
+      slug: 'electrical-repairs',
+      name: 'Electrical Repairs',
+      sortOrder: 1,
+      parentSlug: 'electrician',
+    },
+    {
+      id: '00000000-0000-4000-a000-000000000051',
+      slug: 'carpentry-repairs',
+      name: 'Carpentry and Installation',
+      sortOrder: 1,
+      parentSlug: 'carpenter',
+    },
+    {
+      id: '00000000-0000-4000-a000-000000000061',
+      slug: 'pest-treatment',
+      name: 'Pest Treatment',
+      sortOrder: 1,
+      parentSlug: 'pest-control',
     },
   ];
 
@@ -243,6 +343,323 @@ async function seedCatalog(): Promise<void> {
       supportsScheduled: true,
       supportsRecurring: false,
     },
+    // Plumber
+    {
+      id: '00000000-0000-4000-b000-000000000011',
+      categoryId: idBySlug.get('plumbing-repairs')!,
+      name: 'Tap Installation and Replacement',
+      description:
+        'Install a new customer-supplied tap or replace an existing tap.',
+      durationMinutes: 45,
+      flatPrice: '249.00',
+      commissionType: 'percent',
+      commissionValue: '35.00',
+      supportsInstant: true,
+      supportsScheduled: true,
+      supportsRecurring: false,
+    },
+    {
+      id: '00000000-0000-4000-b000-000000000012',
+      categoryId: idBySlug.get('plumbing-repairs')!,
+      name: 'Tap Leakage Repair',
+      description:
+        'Repair a leaking tap, including washer or cartridge adjustment.',
+      durationMinutes: 30,
+      flatPrice: '199.00',
+      commissionType: 'percent',
+      commissionValue: '35.00',
+      supportsInstant: true,
+      supportsScheduled: true,
+      supportsRecurring: false,
+    },
+    {
+      id: '00000000-0000-4000-b000-000000000013',
+      categoryId: idBySlug.get('plumbing-repairs')!,
+      name: 'Pipe Fitting and Installation',
+      description:
+        'Fit or replace an exposed water pipe section using customer-approved material.',
+      durationMinutes: 60,
+      flatPrice: '399.00',
+      commissionType: 'percent',
+      commissionValue: '35.00',
+      supportsInstant: true,
+      supportsScheduled: true,
+      supportsRecurring: false,
+    },
+    {
+      id: '00000000-0000-4000-b000-000000000014',
+      categoryId: idBySlug.get('plumbing-repairs')!,
+      name: 'Pipe Leakage Repair',
+      description:
+        'Diagnose and repair a visible leak in an accessible pipe joint or section.',
+      durationMinutes: 45,
+      flatPrice: '299.00',
+      commissionType: 'percent',
+      commissionValue: '35.00',
+      supportsInstant: true,
+      supportsScheduled: true,
+      supportsRecurring: false,
+    },
+    {
+      id: '00000000-0000-4000-b000-000000000015',
+      categoryId: idBySlug.get('plumbing-repairs')!,
+      name: 'Wash Basin Installation',
+      description:
+        'Install a customer-supplied wash basin with accessible inlet and outlet connections.',
+      durationMinutes: 90,
+      flatPrice: '549.00',
+      commissionType: 'percent',
+      commissionValue: '35.00',
+      supportsInstant: false,
+      supportsScheduled: true,
+      supportsRecurring: false,
+    },
+    {
+      id: '00000000-0000-4000-b000-000000000016',
+      categoryId: idBySlug.get('plumbing-repairs')!,
+      name: 'Toilet Flush Repair',
+      description:
+        'Repair a standard flush tank mechanism or accessible flush connection.',
+      durationMinutes: 45,
+      flatPrice: '249.00',
+      commissionType: 'percent',
+      commissionValue: '35.00',
+      supportsInstant: true,
+      supportsScheduled: true,
+      supportsRecurring: false,
+    },
+
+    // Electrician
+    {
+      id: '00000000-0000-4000-b000-000000000021',
+      categoryId: idBySlug.get('electrical-repairs')!,
+      name: 'Switch Board Replacement',
+      description:
+        'Replace one customer-supplied switch board and reconnect existing points safely.',
+      durationMinutes: 45,
+      flatPrice: '299.00',
+      commissionType: 'percent',
+      commissionValue: '35.00',
+      supportsInstant: true,
+      supportsScheduled: true,
+      supportsRecurring: false,
+    },
+    {
+      id: '00000000-0000-4000-b000-000000000022',
+      categoryId: idBySlug.get('electrical-repairs')!,
+      name: 'Electrical Wire Connection and Repair',
+      description:
+        'Diagnose and repair an accessible loose or damaged household wire connection.',
+      durationMinutes: 45,
+      flatPrice: '249.00',
+      commissionType: 'percent',
+      commissionValue: '35.00',
+      supportsInstant: true,
+      supportsScheduled: true,
+      supportsRecurring: false,
+    },
+    {
+      id: '00000000-0000-4000-b000-000000000023',
+      categoryId: idBySlug.get('electrical-repairs')!,
+      name: 'Ceiling Fan Installation',
+      description:
+        'Install one customer-supplied ceiling fan on an existing safe mounting point.',
+      durationMinutes: 60,
+      flatPrice: '349.00',
+      commissionType: 'percent',
+      commissionValue: '35.00',
+      supportsInstant: false,
+      supportsScheduled: true,
+      supportsRecurring: false,
+    },
+    {
+      id: '00000000-0000-4000-b000-000000000024',
+      categoryId: idBySlug.get('electrical-repairs')!,
+      name: 'Ceiling Fan Repair',
+      description:
+        'Diagnose and repair a non-working or noisy ceiling fan where parts are accessible.',
+      durationMinutes: 60,
+      flatPrice: '299.00',
+      commissionType: 'percent',
+      commissionValue: '35.00',
+      supportsInstant: true,
+      supportsScheduled: true,
+      supportsRecurring: false,
+    },
+    {
+      id: '00000000-0000-4000-b000-000000000025',
+      categoryId: idBySlug.get('electrical-repairs')!,
+      name: 'Light Fixture Installation',
+      description:
+        'Install one customer-supplied wall or ceiling light on an existing connection.',
+      durationMinutes: 30,
+      flatPrice: '199.00',
+      commissionType: 'percent',
+      commissionValue: '35.00',
+      supportsInstant: true,
+      supportsScheduled: true,
+      supportsRecurring: false,
+    },
+    {
+      id: '00000000-0000-4000-b000-000000000026',
+      categoryId: idBySlug.get('electrical-repairs')!,
+      name: 'MCB or Fuse Replacement',
+      description:
+        'Replace one compatible customer-approved MCB or fuse after a safety diagnosis.',
+      durationMinutes: 45,
+      flatPrice: '299.00',
+      commissionType: 'percent',
+      commissionValue: '35.00',
+      supportsInstant: true,
+      supportsScheduled: true,
+      supportsRecurring: false,
+    },
+
+    // Carpenter
+    {
+      id: '00000000-0000-4000-b000-000000000031',
+      categoryId: idBySlug.get('carpentry-repairs')!,
+      name: 'Door Lock Installation',
+      description:
+        'Install or replace one customer-supplied standard door lock.',
+      durationMinutes: 60,
+      flatPrice: '349.00',
+      commissionType: 'percent',
+      commissionValue: '35.00',
+      supportsInstant: false,
+      supportsScheduled: true,
+      supportsRecurring: false,
+    },
+    {
+      id: '00000000-0000-4000-b000-000000000032',
+      categoryId: idBySlug.get('carpentry-repairs')!,
+      name: 'Door Hinge Repair',
+      description:
+        'Realign or replace accessible hinges on one household door.',
+      durationMinutes: 45,
+      flatPrice: '249.00',
+      commissionType: 'percent',
+      commissionValue: '35.00',
+      supportsInstant: true,
+      supportsScheduled: true,
+      supportsRecurring: false,
+    },
+    {
+      id: '00000000-0000-4000-b000-000000000033',
+      categoryId: idBySlug.get('carpentry-repairs')!,
+      name: 'Furniture Assembly',
+      description:
+        'Assemble one flat-pack table, chair, shelf or similar household furniture item.',
+      durationMinutes: 120,
+      flatPrice: '599.00',
+      commissionType: 'percent',
+      commissionValue: '35.00',
+      supportsInstant: false,
+      supportsScheduled: true,
+      supportsRecurring: false,
+    },
+    {
+      id: '00000000-0000-4000-b000-000000000034',
+      categoryId: idBySlug.get('carpentry-repairs')!,
+      name: 'Curtain Rod Installation',
+      description:
+        'Install one customer-supplied curtain rod with standard wall brackets.',
+      durationMinutes: 60,
+      flatPrice: '299.00',
+      commissionType: 'percent',
+      commissionValue: '35.00',
+      supportsInstant: false,
+      supportsScheduled: true,
+      supportsRecurring: false,
+    },
+
+    // Appliance installation
+    {
+      id: '00000000-0000-4000-b000-000000000041',
+      categoryId: idBySlug.get('appliance-installation')!,
+      name: 'Geyser Installation',
+      description:
+        'Install a customer-supplied geyser on prepared plumbing and electrical points.',
+      durationMinutes: 90,
+      flatPrice: '649.00',
+      commissionType: 'flat',
+      commissionValue: '250.00',
+      supportsInstant: false,
+      supportsScheduled: true,
+      supportsRecurring: false,
+    },
+    {
+      id: '00000000-0000-4000-b000-000000000042',
+      categoryId: idBySlug.get('appliance-installation')!,
+      name: 'Washing Machine Installation',
+      description:
+        'Connect and level one customer-supplied washing machine at prepared utility points.',
+      durationMinutes: 75,
+      flatPrice: '499.00',
+      commissionType: 'flat',
+      commissionValue: '200.00',
+      supportsInstant: false,
+      supportsScheduled: true,
+      supportsRecurring: false,
+    },
+    {
+      id: '00000000-0000-4000-b000-000000000043',
+      categoryId: idBySlug.get('appliance-installation')!,
+      name: 'Water Purifier Installation',
+      description:
+        'Install a customer-supplied water purifier at prepared inlet and power points.',
+      durationMinutes: 90,
+      flatPrice: '599.00',
+      commissionType: 'flat',
+      commissionValue: '225.00',
+      supportsInstant: false,
+      supportsScheduled: true,
+      supportsRecurring: false,
+    },
+
+    // Pest control
+    {
+      id: '00000000-0000-4000-b000-000000000051',
+      categoryId: idBySlug.get('pest-treatment')!,
+      name: 'General Pest Control',
+      description:
+        'General crawling-insect treatment for a standard two-bedroom home.',
+      durationMinutes: 120,
+      flatPrice: '899.00',
+      commissionType: 'percent',
+      commissionValue: '30.00',
+      supportsInstant: false,
+      supportsScheduled: true,
+      supportsRecurring: true,
+    },
+    {
+      id: '00000000-0000-4000-b000-000000000052',
+      categoryId: idBySlug.get('pest-treatment')!,
+      name: 'Cockroach Control Treatment',
+      description:
+        'Targeted cockroach treatment for kitchen, bathroom and common hiding areas.',
+      durationMinutes: 90,
+      flatPrice: '799.00',
+      commissionType: 'percent',
+      commissionValue: '30.00',
+      supportsInstant: false,
+      supportsScheduled: true,
+      supportsRecurring: true,
+    },
+    {
+      id: '00000000-0000-4000-b000-000000000053',
+      categoryId: idBySlug.get('pest-treatment')!,
+      name: 'Termite Inspection and Treatment',
+      description:
+        'Inspect accessible termite activity and treat the agreed affected area.',
+      durationMinutes: 180,
+      flatPrice: '1499.00',
+      commissionType: 'percent',
+      commissionValue: '30.00',
+      supportsInstant: false,
+      supportsScheduled: true,
+      supportsRecurring: false,
+    },
   ];
 
   for (const service of services) {
@@ -254,7 +671,9 @@ async function seedCatalog(): Promise<void> {
     });
   }
 
-  await seedIndoreAreas(services.map((service) => service.id));
+  if (options.seedAreas) {
+    await seedIndoreAreas(services.map((service) => service.id));
+  }
 
   console.log(
     `Seeded ${cities.length} cities, ${categories.length} categories and ${services.length} services.`,

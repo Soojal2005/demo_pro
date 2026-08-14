@@ -61,3 +61,5 @@ pids
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 .curl-test-runtime/
 .geo-postman-runtime/
+.auth-postman-runtime/
+.live-auth-postman-runtime/

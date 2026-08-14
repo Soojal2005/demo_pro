@@ -1,4 +1,55 @@
-# Homingo Geo Postman collection
+# Homingo Postman collections
+
+## Complete API deployment workspace
+
+Team workspace collection: [Homingo - Complete API Deployment Gate](https://client-homingo-2142694.postman.co/workspace/Homingo's-Workspace~e1064f08-eb8a-4469-8b63-9532a4690b82/collection/57227418-a52f4ea2-5e8e-429b-aa9c-5ae7eaf8a6e7)
+
+Shared environment in that workspace: `Homingo - Local Isolated Authentication`
+(`57227418-8d615579-07bf-43df-8a74-65d491dd9c40`). Live phone,
+OTP, Firebase token, and runtime bearer-token values remain blank/private.
+
+For intentional real-provider checks, select `Homingo - Live OTP Local
+(private values required)`
+(`57227418-746a5fc7-a022-4b8e-902f-75ef01224b3a`). It points to the isolated
+live-provider server on port `53015`; phone, OTP, provider reference, and tokens
+are secret variables and must never be shared as environment values.
+
+Import these files into one Postman workspace:
+
+- `Homingo-Full-API.postman_collection.json`
+- `Homingo-Local-Isolated.postman_environment.json`
+
+The master collection contains a numbered folder for every Homingo module.
+Module 1, **Identity, Authentication & Registration**, is fully implemented
+with request bodies, sanitized expected-response examples, environment-variable
+chaining, persistence checks, and Postman test scripts. Module 15 now contains
+21 Admin Console backend requests covering every new route, both bulk targets,
+all report types and CSV/XLSX/PDF, with context, polling dispatch, 360 views,
+settings, job progress/download and analytics assertions. Later module folders are
+kept explicit and empty until their requests have been verified; an empty folder
+must not be interpreted as test coverage.
+
+Run the automated Module 1 suite from the repository root:
+
+```powershell
+.\test\manual\run-auth-postman.ps1
+```
+
+The runner creates a disposable PostgreSQL database, applies every migration,
+uses the deterministic local Redis and OTP fixtures, boots the compiled NestJS
+server, runs Newman, and writes sanitized evidence to `postman/reports/`.
+
+The final folder, **Live Provider Smoke (Manual)**, is skipped by automation.
+Use Postman current values (not shared/initial values) for `livePhone`,
+`liveOtpCode`, and `firebaseIdToken`. Never export those values.
+
+Regenerate the canonical files with:
+
+```powershell
+node .\scripts\generate-full-postman.mjs
+```
+
+## Geo collection
 
 Postman cloud collection: [Homingo Geo — Indore complete endpoint verification](https://go.postman.co/collection/57227418-f6d2a8d5-0c97-40d2-a60d-fc9e69e4b4a9)
 

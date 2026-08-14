@@ -118,6 +118,18 @@ export const PermissionCode = {
    * assembled in one view.
    */
   REVIEW_MODERATE: 'review.moderate',
+
+  // --- Module 15 · Admin Console & Reporting --------------------------
+  ADMIN_DASHBOARD_READ: 'admin.dashboard.read',
+  CUSTOMER_READ: 'customer.read',
+  PRO_READ: 'pro.read',
+  DISPATCH_READ: 'dispatch.read',
+  ADMIN_JOB_READ: 'admin.job.read',
+  ADMIN_BULK_EXECUTE: 'admin.bulk.execute',
+  REPORT_EXPORT: 'report.export',
+  REPORT_ANALYTICS_READ: 'report.analytics.read',
+  PLATFORM_SETTING_READ: 'platformSetting.read',
+  PLATFORM_SETTING_MANAGE: 'platformSetting.manage',
 } as const;
 
 export type PermissionCode =

@@ -43,6 +43,12 @@ describe('HTTP routing (e2e)', () => {
       .useValue({
         $connect: () => Promise.resolve(),
         $disconnect: () => Promise.resolve(),
+        // Let AdminJob recover stale work and observe an empty queue without
+        // touching infrastructure during route-registration tests.
+        adminJob: {
+          updateMany: () => Promise.resolve({ count: 0 }),
+          findFirst: () => Promise.resolve(null),
+        },
       })
       .overrideProvider(RedisService)
       .useValue({

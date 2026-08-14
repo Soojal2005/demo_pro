@@ -139,24 +139,21 @@ export class BookingsService {
       slotStartAt.getTime() + service.durationMinutes * 60_000,
     );
 
-    const booking = await this.prisma.booking.create({
-      data: {
-        bookingNumber: await this.generateBookingNumber(),
-        customerId,
-        serviceId: service.id,
-        addressId: address.id,
-        // Frozen like flatPrice: areas get redrawn, and this booking must
-        // keep saying where it was taken.
-        areaId,
-        bookingType,
-        slotStartAt,
-        slotEndAt,
-        // Frozen here, and never recomputed from the live catalogue again.
-        flatPrice: service.flatPrice,
-        paymentMode: dto.paymentMode,
-        paymentStatus: 'unpaid',
-        status: 'created',
-      },
+    const booking = await this.createWithUniqueBookingNumber({
+      customerId,
+      serviceId: service.id,
+      addressId: address.id,
+      // Frozen like flatPrice: areas get redrawn, and this booking must
+      // keep saying where it was taken.
+      areaId,
+      bookingType,
+      slotStartAt,
+      slotEndAt,
+      // Frozen here, and never recomputed from the live catalogue again.
+      flatPrice: service.flatPrice,
+      paymentMode: dto.paymentMode,
+      paymentStatus: 'unpaid',
+      status: 'created',
     });
 
     await this.state.recordEvent(booking.id, 'created', 'customer', customerId);
@@ -348,6 +345,130 @@ export class BookingsService {
     });
   }
 
+  /**
+   * Replace an assignment or return it to the dispatch queue. This is kept in
+   * the booking domain so the admin console does not become a second writer of
+   * booking state.
+   */
+  async reassignByAdmin(
+    bookingId: string,
+    input: {
+      mode: 'specific_pro' | 'redispatch';
+      proId?: string;
+      reason: string;
+    },
+    adminId: string,
+    allowedCityIds?: string[],
+  ): Promise<Booking> {
+    const reason = input.reason.trim();
+    if (reason.length < 10) {
+      throw apiError(
+        'A reassignment reason of at least 10 characters is required',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    const booking = await this.prisma.booking.findUnique({
+      where: { id: bookingId },
+      include: { address: { select: { cityId: true } } },
+    });
+    if (!booking) throw apiError('Booking not found', HttpStatus.NOT_FOUND);
+    if (
+      allowedCityIds?.length &&
+      !allowedCityIds.includes(booking.address.cityId)
+    ) {
+      throw apiError('Outside your city scope', HttpStatus.FORBIDDEN);
+    }
+    if (!['assigned', 'en_route'].includes(booking.status)) {
+      throw apiError(
+        'Only an assigned or en-route booking can be reassigned',
+        HttpStatus.CONFLICT,
+      );
+    }
+
+    if (input.mode === 'specific_pro') {
+      const pro = await this.prisma.pro.findUnique({
+        where: { id: input.proId },
+        include: {
+          services: {
+            where: { serviceId: booking.serviceId, isActive: true },
+            select: { id: true },
+          },
+        },
+      });
+      if (
+        !pro ||
+        pro.status !== 'approved' ||
+        !pro.isAvailable ||
+        pro.cityId !== booking.address.cityId ||
+        !pro.services.length
+      ) {
+        throw apiError(
+          'The selected Pro is not currently eligible for this booking',
+          HttpStatus.CONFLICT,
+        );
+      }
+      if (booking.slotStartAt && booking.slotEndAt) {
+        const overlap = await this.prisma.booking.count({
+          where: {
+            id: { not: booking.id },
+            proId: pro.id,
+            status: { in: ['assigned', 'en_route', 'arrived', 'started'] },
+            slotStartAt: { lt: booking.slotEndAt },
+            slotEndAt: { gt: booking.slotStartAt },
+          },
+        });
+        if (overlap)
+          throw apiError(
+            'The selected Pro has a committed booking in this window',
+            HttpStatus.CONFLICT,
+          );
+      }
+    }
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const next = await tx.booking.update({
+        where: { id: booking.id },
+        data:
+          input.mode === 'redispatch'
+            ? {
+                status: 'assigning',
+                proId: null,
+                assignedAt: null,
+                notifiedAt: null,
+                ackDeadlineAt: null,
+                acknowledgedAt: null,
+                assignmentOutcome: 'ops_reassigned',
+                overriddenByAdminId: adminId,
+                overrideReason: reason,
+              }
+            : {
+                status: 'assigned',
+                proId: input.proId!,
+                assignedAt: new Date(),
+                notifiedAt: null,
+                ackDeadlineAt: null,
+                acknowledgedAt: null,
+                assignmentAttempt: { increment: 1 },
+                assignmentOutcome: 'ops_reassigned',
+                overriddenByAdminId: adminId,
+                overrideReason: reason,
+              },
+      });
+      await tx.bookingStatusEvent.create({
+        data: {
+          bookingId: booking.id,
+          status: next.status,
+          actorType: 'ops',
+          actorId: adminId,
+        },
+      });
+      return next;
+    });
+    if (input.mode === 'redispatch')
+      await this.dispatch.requestAssignment(booking.id);
+    return updated;
+  }
+
   // ------------------------------------------------------------------
   // Internals
   // ------------------------------------------------------------------
@@ -419,6 +540,45 @@ export class BookingsService {
     `;
     const year = new Date().getUTCFullYear();
     return `HB-${year}-${rows[0].nextval.toString().padStart(6, '0')}`;
+  }
+
+  /**
+   * Sequences normally make booking numbers collision-free, but PostgreSQL
+   * does not advance a sequence when data is imported with explicit numbers.
+   * If that leaves production one or more values behind, consume the stale
+   * values and retry instead of returning a 500 to the customer.
+   */
+  private async createWithUniqueBookingNumber(
+    data: Omit<Prisma.BookingUncheckedCreateInput, 'bookingNumber'>,
+  ): Promise<Booking> {
+    const maxAttempts = 10;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      try {
+        return await this.prisma.booking.create({
+          data: { ...data, bookingNumber: await this.generateBookingNumber() },
+        });
+      } catch (error) {
+        if (!this.isBookingNumberCollision(error) || attempt === maxAttempts) {
+          throw error;
+        }
+      }
+    }
+
+    throw new Error('Could not allocate a unique booking number');
+  }
+
+  private isBookingNumberCollision(error: unknown): boolean {
+    const known = error as {
+      code?: string;
+      meta?: { target?: string | string[] };
+    };
+    if (known.code !== 'P2002') return false;
+
+    const target = known.meta?.target;
+    return Array.isArray(target)
+      ? target.includes('bookingNumber')
+      : target?.includes('bookingNumber') === true;
   }
 
   /**

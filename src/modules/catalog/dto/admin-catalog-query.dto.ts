@@ -16,9 +16,10 @@ export class AdminCatalogQueryDto {
     description: 'Omit to see both active and inactive rows.',
   })
   @IsOptional()
-  @Transform(({ value }): unknown => {
-    if (value === 'true') return true;
-    if (value === 'false') return false;
+  @Transform(({ value, obj, key }): unknown => {
+    const raw = (obj as Record<string, unknown>)[key];
+    if (raw === 'true') return true;
+    if (raw === 'false') return false;
     return value;
   })
   @IsBoolean()

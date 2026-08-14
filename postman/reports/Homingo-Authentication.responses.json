@@ -1,0 +1,4711 @@
+{
+  "generatedAt": "2026-08-13T10:11:40.659Z",
+  "description": "Sanitized Newman evidence from real HTTP calls to an isolated Homingo application. Authentication secrets, OTPs, provider references, and phone numbers are removed.",
+  "summary": {
+    "requests": 41,
+    "assertions": 161,
+    "failedAssertions": 0,
+    "requestStats": {
+      "total": 41,
+      "pending": 0,
+      "failed": 0
+    },
+    "assertionStats": {
+      "total": 161,
+      "pending": 0,
+      "failed": 0
+    }
+  },
+  "executions": [
+    {
+      "sequence": 1,
+      "name": "01 - Health readiness before authentication",
+      "request": {
+        "method": "GET",
+        "url": "",
+        "headers": [
+          {
+            "key": "User-Agent",
+            "value": "PostmanRuntime/7.39.1"
+          },
+          {
+            "key": "Accept",
+            "value": "*/*"
+          },
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          },
+          {
+            "key": "Postman-Token",
+            "value": "86f68bfe-00c8-41c2-b8f0-e756a2d1b048"
+          },
+          {
+            "key": "Host",
+            "value": "127.0.0.1:53014"
+          },
+          {
+            "key": "Accept-Encoding",
+            "value": "gzip, deflate, br"
+          },
+          {
+            "key": "Connection",
+            "value": "keep-alive"
+          }
+        ],
+        "hasBody": false
+      },
+      "response": {
+        "status": "OK",
+        "code": 200,
+        "responseTimeMs": 72,
+        "responseSizeBytes": 285,
+        "headers": [
+          {
+            "key": "access-control-allow-origin",
+            "value": "http://localhost:3000"
+          },
+          {
+            "key": "cache-control",
+            "value": "no-cache, no-store, must-revalidate"
+          },
+          {
+            "key": "content-type",
+            "value": "application/json; charset=utf-8"
+          },
+          {
+            "key": "content-length",
+            "value": "285"
+          },
+          {
+            "key": "Date",
+            "value": "Thu, 13 Aug 2026 10:11:34 GMT"
+          },
+          {
+            "key": "Connection",
+            "value": "keep-alive"
+          },
+          {
+            "key": "Keep-Alive",
+            "value": "timeout=72"
+          }
+        ],
+        "body": {
+          "success": true,
+          "statusCode": 200,
+          "message": "Success",
+          "data": {
+            "status": "ok",
+            "info": {
+              "database": {
+                "status": "up"
+              },
+              "memory_heap": {
+                "status": "up"
+              }
+            },
+            "error": {},
+            "details": {
+              "database": {
+                "status": "up"
+              },
+              "memory_heap": {
+                "status": "up"
+              }
+            }
+          },
+          "timestamp": "2026-08-13T10:11:34.660Z",
+          "path": "/api/v1/health"
+        }
+      },
+      "assertions": [
+        {
+          "name": "HTTP status matches the documented expectation",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Response uses the Homingo envelope",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Success data is populated and error data is null",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Database and heap checks are healthy",
+          "passed": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "sequence": 2,
+      "name": "02 - Reject short guest device identifier",
+      "request": {
+        "method": "POST",
+        "url": "",
+        "headers": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "User-Agent",
+            "value": "PostmanRuntime/7.39.1"
+          },
+          {
+            "key": "Accept",
+            "value": "*/*"
+          },
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          },
+          {
+            "key": "Postman-Token",
+            "value": "1d1a462e-50f1-414a-956f-0eed0eff8c80"
+          },
+          {
+            "key": "Host",
+            "value": "127.0.0.1:53014"
+          },
+          {
+            "key": "Accept-Encoding",
+            "value": "gzip, deflate, br"
+          },
+          {
+            "key": "Connection",
+            "value": "keep-alive"
+          },
+          {
+            "key": "Content-Length",
+            "value": "25"
+          }
+        ],
+        "hasBody": true,
+        "body": {
+          "deviceId": "short"
+        }
+      },
+      "response": {
+        "status": "Bad Request",
+        "code": 400,
+        "responseTimeMs": 51,
+        "responseSizeBytes": 230,
+        "headers": [
+          {
+            "key": "access-control-allow-origin",
+            "value": "http://localhost:3000"
+          },
+          {
+            "key": "content-type",
+            "value": "application/json; charset=utf-8"
+          },
+          {
+            "key": "content-length",
+            "value": "230"
+          },
+          {
+            "key": "Date",
+            "value": "Thu, 13 Aug 2026 10:11:34 GMT"
+          },
+          {
+            "key": "Connection",
+            "value": "keep-alive"
+          },
+          {
+            "key": "Keep-Alive",
+            "value": "timeout=72"
+          }
+        ],
+        "body": {
+          "success": false,
+          "statusCode": 400,
+          "message": "Validation failed",
+          "data": null,
+          "errors": [
+            {
+              "message": "deviceId must be longer than or equal to 8 characters"
+            }
+          ],
+          "timestamp": "2026-08-13T10:11:34.836Z",
+          "path": "/api/v1/auth/guest-session"
+        }
+      },
+      "assertions": [
+        {
+          "name": "HTTP status matches the documented expectation",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Response uses the Homingo envelope",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Success data is populated and error data is null",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Validation error explains deviceId failure",
+          "passed": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "sequence": 3,
+      "name": "03 - Create guest registration session",
+      "request": {
+        "method": "POST",
+        "url": "",
+        "headers": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "User-Agent",
+            "value": "PostmanRuntime/7.39.1"
+          },
+          {
+            "key": "Accept",
+            "value": "*/*"
+          },
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          },
+          {
+            "key": "Postman-Token",
+            "value": "3b192906-cc5a-417c-b134-b880ba3f5a57"
+          },
+          {
+            "key": "Host",
+            "value": "127.0.0.1:53014"
+          },
+          {
+            "key": "Accept-Encoding",
+            "value": "gzip, deflate, br"
+          },
+          {
+            "key": "Connection",
+            "value": "keep-alive"
+          },
+          {
+            "key": "Content-Length",
+            "value": "44"
+          }
+        ],
+        "hasBody": true,
+        "body": {
+          "deviceId": "auth-postman-device-0001"
+        }
+      },
+      "response": {
+        "status": "Created",
+        "code": 201,
+        "responseTimeMs": 396,
+        "responseSizeBytes": 740,
+        "headers": [
+          {
+            "key": "access-control-allow-origin",
+            "value": "http://localhost:3000"
+          },
+          {
+            "key": "content-type",
+            "value": "application/json; charset=utf-8"
+          },
+          {
+            "key": "content-length",
+            "value": "740"
+          },
+          {
+            "key": "Date",
+            "value": "Thu, 13 Aug 2026 10:11:35 GMT"
+          },
+          {
+            "key": "Connection",
+            "value": "keep-alive"
+          },
+          {
+            "key": "Keep-Alive",
+            "value": "timeout=72"
+          }
+        ],
+        "body": {
+          "success": true,
+          "statusCode": 201,
+          "message": "Success",
+          "data": {
+            "accessToken": "[REDACTED]",
+            "refreshToken": "[REDACTED]"
+          },
+          "timestamp": "2026-08-13T10:11:35.340Z",
+          "path": "/api/v1/auth/guest-session"
+        }
+      },
+      "assertions": [
+        {
+          "name": "HTTP status matches the documented expectation",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Response uses the Homingo envelope",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Success data is populated and error data is null",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Guest token pair is populated",
+          "passed": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "sequence": 4,
+      "name": "04 - Read guest profile and save registration identity",
+      "request": {
+        "method": "GET",
+        "url": "",
+        "headers": [
+          {
+            "key": "User-Agent",
+            "value": "PostmanRuntime/7.39.1"
+          },
+          {
+            "key": "Accept",
+            "value": "*/*"
+          },
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          },
+          {
+            "key": "Postman-Token",
+            "value": "f4bfeda1-fd88-4c85-8ee4-0c5e6b66bef9"
+          },
+          {
+            "key": "Host",
+            "value": "127.0.0.1:53014"
+          },
+          {
+            "key": "Accept-Encoding",
+            "value": "gzip, deflate, br"
+          },
+          {
+            "key": "Connection",
+            "value": "keep-alive"
+          }
+        ],
+        "hasBody": false
+      },
+      "response": {
+        "status": "OK",
+        "code": 200,
+        "responseTimeMs": 17,
+        "responseSizeBytes": 336,
+        "headers": [
+          {
+            "key": "access-control-allow-origin",
+            "value": "http://localhost:3000"
+          },
+          {
+            "key": "content-type",
+            "value": "application/json; charset=utf-8"
+          },
+          {
+            "key": "content-length",
+            "value": "336"
+          },
+          {
+            "key": "Date",
+            "value": "Thu, 13 Aug 2026 10:11:35 GMT"
+          },
+          {
+            "key": "Connection",
+            "value": "keep-alive"
+          },
+          {
+            "key": "Keep-Alive",
+            "value": "timeout=72"
+          }
+        ],
+        "body": {
+          "success": true,
+          "statusCode": 200,
+          "message": "Success",
+          "data": {
+            "id": "cccd78a5-a7cd-4303-9357-6d522bf92484",
+            "phone": "[REDACTED]",
+            "fullName": null,
+            "email": null,
+            "status": "guest",
+            "defaultAddressId": null,
+            "createdAt": "2026-08-13T10:11:35.300Z",
+            "updatedAt": "2026-08-13T10:11:35.300Z"
+          },
+          "timestamp": "2026-08-13T10:11:35.477Z",
+          "path": "/api/v1/customers/me"
+        }
+      },
+      "assertions": [
+        {
+          "name": "HTTP status matches the documented expectation",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Response uses the Homingo envelope",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Success data is populated and error data is null",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Guest profile contains real persisted data",
+          "passed": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "sequence": 5,
+      "name": "05 - Resume the same guest session",
+      "request": {
+        "method": "POST",
+        "url": "",
+        "headers": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "User-Agent",
+            "value": "PostmanRuntime/7.39.1"
+          },
+          {
+            "key": "Accept",
+            "value": "*/*"
+          },
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          },
+          {
+            "key": "Postman-Token",
+            "value": "96a2d747-311f-44e2-b42f-991b88e1f595"
+          },
+          {
+            "key": "Host",
+            "value": "127.0.0.1:53014"
+          },
+          {
+            "key": "Accept-Encoding",
+            "value": "gzip, deflate, br"
+          },
+          {
+            "key": "Connection",
+            "value": "keep-alive"
+          },
+          {
+            "key": "Content-Length",
+            "value": "44"
+          }
+        ],
+        "hasBody": true,
+        "body": {
+          "deviceId": "auth-postman-device-0001"
+        }
+      },
+      "response": {
+        "status": "Created",
+        "code": 201,
+        "responseTimeMs": 20,
+        "responseSizeBytes": 740,
+        "headers": [
+          {
+            "key": "access-control-allow-origin",
+            "value": "http://localhost:3000"
+          },
+          {
+            "key": "content-type",
+            "value": "application/json; charset=utf-8"
+          },
+          {
+            "key": "content-length",
+            "value": "740"
+          },
+          {
+            "key": "Date",
+            "value": "Thu, 13 Aug 2026 10:11:35 GMT"
+          },
+          {
+            "key": "Connection",
+            "value": "keep-alive"
+          },
+          {
+            "key": "Keep-Alive",
+            "value": "timeout=72"
+          }
+        ],
+        "body": {
+          "success": true,
+          "statusCode": 201,
+          "message": "Success",
+          "data": {
+            "accessToken": "[REDACTED]",
+            "refreshToken": "[REDACTED]"
+          },
+          "timestamp": "2026-08-13T10:11:35.605Z",
+          "path": "/api/v1/auth/guest-session"
+        }
+      },
+      "assertions": [
+        {
+          "name": "HTTP status matches the documented expectation",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Response uses the Homingo envelope",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Success data is populated and error data is null",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Resumed guest token pair is populated",
+          "passed": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "sequence": 6,
+      "name": "06 - Reject malformed OTP phone",
+      "request": {
+        "method": "POST",
+        "url": "",
+        "headers": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "User-Agent",
+            "value": "PostmanRuntime/7.39.1"
+          },
+          {
+            "key": "Accept",
+            "value": "*/*"
+          },
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          },
+          {
+            "key": "Postman-Token",
+            "value": "6754e511-5e70-416f-b07c-be031f94c6df"
+          },
+          {
+            "key": "Host",
+            "value": "127.0.0.1:53014"
+          },
+          {
+            "key": "Accept-Encoding",
+            "value": "gzip, deflate, br"
+          },
+          {
+            "key": "Connection",
+            "value": "keep-alive"
+          },
+          {
+            "key": "Content-Length",
+            "value": "47"
+          }
+        ],
+        "hasBody": true,
+        "body": {
+          "phone": "[REDACTED]",
+          "actorType": "customer"
+        }
+      },
+      "response": {
+        "status": "Bad Request",
+        "code": 400,
+        "responseTimeMs": 31,
+        "responseSizeBytes": 235,
+        "headers": [
+          {
+            "key": "access-control-allow-origin",
+            "value": "http://localhost:3000"
+          },
+          {
+            "key": "content-type",
+            "value": "application/json; charset=utf-8"
+          },
+          {
+            "key": "content-length",
+            "value": "235"
+          },
+          {
+            "key": "Date",
+            "value": "Thu, 13 Aug 2026 10:11:35 GMT"
+          },
+          {
+            "key": "Connection",
+            "value": "keep-alive"
+          },
+          {
+            "key": "Keep-Alive",
+            "value": "timeout=72"
+          }
+        ],
+        "body": {
+          "success": false,
+          "statusCode": 400,
+          "message": "Validation failed",
+          "data": null,
+          "errors": [
+            {
+              "message": "phone must be E.164 or a valid 10-digit Indian mobile number"
+            }
+          ],
+          "timestamp": "2026-08-13T10:11:35.723Z",
+          "path": "/api/v1/auth/otp/request"
+        }
+      },
+      "assertions": [
+        {
+          "name": "HTTP status matches the documented expectation",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Response uses the Homingo envelope",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Success data is populated and error data is null",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Malformed phone is rejected by validation",
+          "passed": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "sequence": 7,
+      "name": "07 - Reject admin OTP authentication",
+      "request": {
+        "method": "POST",
+        "url": "",
+        "headers": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "User-Agent",
+            "value": "PostmanRuntime/7.39.1"
+          },
+          {
+            "key": "Accept",
+            "value": "*/*"
+          },
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          },
+          {
+            "key": "Postman-Token",
+            "value": "96fe2b71-0430-47c8-8b71-65b6cefaa441"
+          },
+          {
+            "key": "Host",
+            "value": "127.0.0.1:53014"
+          },
+          {
+            "key": "Accept-Encoding",
+            "value": "gzip, deflate, br"
+          },
+          {
+            "key": "Connection",
+            "value": "keep-alive"
+          },
+          {
+            "key": "Content-Length",
+            "value": "51"
+          }
+        ],
+        "hasBody": true,
+        "body": {
+          "phone": "[REDACTED]",
+          "actorType": "admin"
+        }
+      },
+      "response": {
+        "status": "Bad Request",
+        "code": 400,
+        "responseTimeMs": 29,
+        "responseSizeBytes": 235,
+        "headers": [
+          {
+            "key": "access-control-allow-origin",
+            "value": "http://localhost:3000"
+          },
+          {
+            "key": "content-type",
+            "value": "application/json; charset=utf-8"
+          },
+          {
+            "key": "content-length",
+            "value": "235"
+          },
+          {
+            "key": "Date",
+            "value": "Thu, 13 Aug 2026 10:11:35 GMT"
+          },
+          {
+            "key": "Connection",
+            "value": "keep-alive"
+          },
+          {
+            "key": "Keep-Alive",
+            "value": "timeout=72"
+          }
+        ],
+        "body": {
+          "success": false,
+          "statusCode": 400,
+          "message": "Validation failed",
+          "data": null,
+          "errors": [
+            {
+              "message": "actorType must be one of the following values: customer, pro"
+            }
+          ],
+          "timestamp": "2026-08-13T10:11:35.905Z",
+          "path": "/api/v1/auth/otp/request"
+        }
+      },
+      "assertions": [
+        {
+          "name": "HTTP status matches the documented expectation",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Response uses the Homingo envelope",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Success data is populated and error data is null",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Admin actor type is rejected",
+          "passed": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "sequence": 8,
+      "name": "08 - Request customer registration OTP",
+      "request": {
+        "method": "POST",
+        "url": "",
+        "headers": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "User-Agent",
+            "value": "PostmanRuntime/7.39.1"
+          },
+          {
+            "key": "Accept",
+            "value": "*/*"
+          },
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          },
+          {
+            "key": "Postman-Token",
+            "value": "1656a858-4fb9-4656-9061-09275ca0274a"
+          },
+          {
+            "key": "Host",
+            "value": "127.0.0.1:53014"
+          },
+          {
+            "key": "Accept-Encoding",
+            "value": "gzip, deflate, br"
+          },
+          {
+            "key": "Connection",
+            "value": "keep-alive"
+          },
+          {
+            "key": "Content-Length",
+            "value": "54"
+          }
+        ],
+        "hasBody": true,
+        "body": {
+          "phone": "[REDACTED]",
+          "actorType": "customer"
+        }
+      },
+      "response": {
+        "status": "Created",
+        "code": 201,
+        "responseTimeMs": 21,
+        "responseSizeBytes": 188,
+        "headers": [
+          {
+            "key": "access-control-allow-origin",
+            "value": "http://localhost:3000"
+          },
+          {
+            "key": "content-type",
+            "value": "application/json; charset=utf-8"
+          },
+          {
+            "key": "content-length",
+            "value": "188"
+          },
+          {
+            "key": "Date",
+            "value": "Thu, 13 Aug 2026 10:11:36 GMT"
+          },
+          {
+            "key": "Connection",
+            "value": "keep-alive"
+          },
+          {
+            "key": "Keep-Alive",
+            "value": "timeout=72"
+          }
+        ],
+        "body": {
+          "success": true,
+          "statusCode": 201,
+          "message": "Success",
+          "data": {
+            "providerRef": "[REDACTED]"
+          },
+          "timestamp": "2026-08-13T10:11:36.059Z",
+          "path": "/api/v1/auth/otp/request"
+        }
+      },
+      "assertions": [
+        {
+          "name": "HTTP status matches the documented expectation",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Response uses the Homingo envelope",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Success data is populated and error data is null",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Provider reference is non-empty and opaque",
+          "passed": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "sequence": 9,
+      "name": "09 - Reject incorrect customer OTP",
+      "request": {
+        "method": "POST",
+        "url": "",
+        "headers": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "User-Agent",
+            "value": "PostmanRuntime/7.39.1"
+          },
+          {
+            "key": "Accept",
+            "value": "*/*"
+          },
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          },
+          {
+            "key": "Postman-Token",
+            "value": "cdd49dd1-7f82-4d32-ac4a-ce2d74efa1a9"
+          },
+          {
+            "key": "Host",
+            "value": "127.0.0.1:53014"
+          },
+          {
+            "key": "Accept-Encoding",
+            "value": "gzip, deflate, br"
+          },
+          {
+            "key": "Connection",
+            "value": "keep-alive"
+          },
+          {
+            "key": "Content-Length",
+            "value": "173"
+          }
+        ],
+        "hasBody": true,
+        "body": {
+          "phone": "[REDACTED]",
+          "code": "[REDACTED]",
+          "providerRef": "[REDACTED]",
+          "actorType": "customer",
+          "deviceId": "auth-postman-device-0001"
+        }
+      },
+      "response": {
+        "status": "Unauthorized",
+        "code": 401,
+        "responseTimeMs": 23,
+        "responseSizeBytes": 168,
+        "headers": [
+          {
+            "key": "access-control-allow-origin",
+            "value": "http://localhost:3000"
+          },
+          {
+            "key": "content-type",
+            "value": "application/json; charset=utf-8"
+          },
+          {
+            "key": "content-length",
+            "value": "168"
+          },
+          {
+            "key": "Date",
+            "value": "Thu, 13 Aug 2026 10:11:36 GMT"
+          },
+          {
+            "key": "Connection",
+            "value": "keep-alive"
+          },
+          {
+            "key": "Keep-Alive",
+            "value": "timeout=72"
+          }
+        ],
+        "body": {
+          "success": false,
+          "statusCode": 401,
+          "message": "Invalid or expired code",
+          "data": null,
+          "errors": null,
+          "timestamp": "2026-08-13T10:11:36.155Z",
+          "path": "/api/v1/auth/otp/verify"
+        }
+      },
+      "assertions": [
+        {
+          "name": "HTTP status matches the documented expectation",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Response uses the Homingo envelope",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Success data is populated and error data is null",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Incorrect code does not leak tokens",
+          "passed": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "sequence": 10,
+      "name": "10 - Verify OTP and register customer",
+      "request": {
+        "method": "POST",
+        "url": "",
+        "headers": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "User-Agent",
+            "value": "PostmanRuntime/7.39.1"
+          },
+          {
+            "key": "Accept",
+            "value": "*/*"
+          },
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          },
+          {
+            "key": "Postman-Token",
+            "value": "b64d005e-9a19-4a3d-8e1d-451fe78d98c6"
+          },
+          {
+            "key": "Host",
+            "value": "127.0.0.1:53014"
+          },
+          {
+            "key": "Accept-Encoding",
+            "value": "gzip, deflate, br"
+          },
+          {
+            "key": "Connection",
+            "value": "keep-alive"
+          },
+          {
+            "key": "Content-Length",
+            "value": "173"
+          }
+        ],
+        "hasBody": true,
+        "body": {
+          "phone": "[REDACTED]",
+          "code": "[REDACTED]",
+          "providerRef": "[REDACTED]",
+          "actorType": "customer",
+          "deviceId": "auth-postman-device-0001"
+        }
+      },
+      "response": {
+        "status": "Created",
+        "code": 201,
+        "responseTimeMs": 95,
+        "responseSizeBytes": 737,
+        "headers": [
+          {
+            "key": "access-control-allow-origin",
+            "value": "http://localhost:3000"
+          },
+          {
+            "key": "content-type",
+            "value": "application/json; charset=utf-8"
+          },
+          {
+            "key": "content-length",
+            "value": "737"
+          },
+          {
+            "key": "Date",
+            "value": "Thu, 13 Aug 2026 10:11:36 GMT"
+          },
+          {
+            "key": "Connection",
+            "value": "keep-alive"
+          },
+          {
+            "key": "Keep-Alive",
+            "value": "timeout=72"
+          }
+        ],
+        "body": {
+          "success": true,
+          "statusCode": 201,
+          "message": "Success",
+          "data": {
+            "accessToken": "[REDACTED]",
+            "refreshToken": "[REDACTED]"
+          },
+          "timestamp": "2026-08-13T10:11:36.369Z",
+          "path": "/api/v1/auth/otp/verify"
+        }
+      },
+      "assertions": [
+        {
+          "name": "HTTP status matches the documented expectation",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Response uses the Homingo envelope",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Success data is populated and error data is null",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Verified customer token pair is populated",
+          "passed": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "sequence": 11,
+      "name": "11 - Validate persisted verified customer registration",
+      "request": {
+        "method": "GET",
+        "url": "",
+        "headers": [
+          {
+            "key": "User-Agent",
+            "value": "PostmanRuntime/7.39.1"
+          },
+          {
+            "key": "Accept",
+            "value": "*/*"
+          },
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          },
+          {
+            "key": "Postman-Token",
+            "value": "1b92263a-bae9-4218-a593-edbfbd1b56d7"
+          },
+          {
+            "key": "Host",
+            "value": "127.0.0.1:53014"
+          },
+          {
+            "key": "Accept-Encoding",
+            "value": "gzip, deflate, br"
+          },
+          {
+            "key": "Connection",
+            "value": "keep-alive"
+          }
+        ],
+        "hasBody": false
+      },
+      "response": {
+        "status": "OK",
+        "code": 200,
+        "responseTimeMs": 31,
+        "responseSizeBytes": 350,
+        "headers": [
+          {
+            "key": "access-control-allow-origin",
+            "value": "http://localhost:3000"
+          },
+          {
+            "key": "content-type",
+            "value": "application/json; charset=utf-8"
+          },
+          {
+            "key": "content-length",
+            "value": "350"
+          },
+          {
+            "key": "Date",
+            "value": "Thu, 13 Aug 2026 10:11:36 GMT"
+          },
+          {
+            "key": "Connection",
+            "value": "keep-alive"
+          },
+          {
+            "key": "Keep-Alive",
+            "value": "timeout=72"
+          }
+        ],
+        "body": {
+          "success": true,
+          "statusCode": 200,
+          "message": "Success",
+          "data": {
+            "id": "cccd78a5-a7cd-4303-9357-6d522bf92484",
+            "phone": "[REDACTED]",
+            "fullName": null,
+            "email": null,
+            "status": "verified",
+            "defaultAddressId": null,
+            "createdAt": "2026-08-13T10:11:35.300Z",
+            "updatedAt": "2026-08-13T10:11:36.305Z"
+          },
+          "timestamp": "2026-08-13T10:11:36.498Z",
+          "path": "/api/v1/customers/me"
+        }
+      },
+      "assertions": [
+        {
+          "name": "HTTP status matches the documented expectation",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Response uses the Homingo envelope",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Success data is populated and error data is null",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Guest was upgraded instead of duplicated",
+          "passed": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "sequence": 12,
+      "name": "12 - Request OTP for existing-customer login",
+      "request": {
+        "method": "POST",
+        "url": "",
+        "headers": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "User-Agent",
+            "value": "PostmanRuntime/7.39.1"
+          },
+          {
+            "key": "Accept",
+            "value": "*/*"
+          },
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          },
+          {
+            "key": "Postman-Token",
+            "value": "778ebb1d-cb2e-4375-9cb5-76ab3978e1f8"
+          },
+          {
+            "key": "Host",
+            "value": "127.0.0.1:53014"
+          },
+          {
+            "key": "Accept-Encoding",
+            "value": "gzip, deflate, br"
+          },
+          {
+            "key": "Connection",
+            "value": "keep-alive"
+          },
+          {
+            "key": "Content-Length",
+            "value": "54"
+          }
+        ],
+        "hasBody": true,
+        "body": {
+          "phone": "[REDACTED]",
+          "actorType": "customer"
+        }
+      },
+      "response": {
+        "status": "Created",
+        "code": 201,
+        "responseTimeMs": 32,
+        "responseSizeBytes": 188,
+        "headers": [
+          {
+            "key": "access-control-allow-origin",
+            "value": "http://localhost:3000"
+          },
+          {
+            "key": "content-type",
+            "value": "application/json; charset=utf-8"
+          },
+          {
+            "key": "content-length",
+            "value": "188"
+          },
+          {
+            "key": "Date",
+            "value": "Thu, 13 Aug 2026 10:11:36 GMT"
+          },
+          {
+            "key": "Connection",
+            "value": "keep-alive"
+          },
+          {
+            "key": "Keep-Alive",
+            "value": "timeout=72"
+          }
+        ],
+        "body": {
+          "success": true,
+          "statusCode": 201,
+          "message": "Success",
+          "data": {
+            "providerRef": "[REDACTED]"
+          },
+          "timestamp": "2026-08-13T10:11:36.635Z",
+          "path": "/api/v1/auth/otp/request"
+        }
+      },
+      "assertions": [
+        {
+          "name": "HTTP status matches the documented expectation",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Response uses the Homingo envelope",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Success data is populated and error data is null",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Login request returns provider reference",
+          "passed": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "sequence": 13,
+      "name": "13 - Login existing customer with OTP",
+      "request": {
+        "method": "POST",
+        "url": "",
+        "headers": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "User-Agent",
+            "value": "PostmanRuntime/7.39.1"
+          },
+          {
+            "key": "Accept",
+            "value": "*/*"
+          },
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          },
+          {
+            "key": "Postman-Token",
+            "value": "488e2461-7280-4ffa-be40-979955cb563d"
+          },
+          {
+            "key": "Host",
+            "value": "127.0.0.1:53014"
+          },
+          {
+            "key": "Accept-Encoding",
+            "value": "gzip, deflate, br"
+          },
+          {
+            "key": "Connection",
+            "value": "keep-alive"
+          },
+          {
+            "key": "Content-Length",
+            "value": "131"
+          }
+        ],
+        "hasBody": true,
+        "body": {
+          "phone": "[REDACTED]",
+          "code": "[REDACTED]",
+          "providerRef": "[REDACTED]",
+          "actorType": "customer"
+        }
+      },
+      "response": {
+        "status": "Created",
+        "code": 201,
+        "responseTimeMs": 48,
+        "responseSizeBytes": 737,
+        "headers": [
+          {
+            "key": "access-control-allow-origin",
+            "value": "http://localhost:3000"
+          },
+          {
+            "key": "content-type",
+            "value": "application/json; charset=utf-8"
+          },
+          {
+            "key": "content-length",
+            "value": "737"
+          },
+          {
+            "key": "Date",
+            "value": "Thu, 13 Aug 2026 10:11:36 GMT"
+          },
+          {
+            "key": "Connection",
+            "value": "keep-alive"
+          },
+          {
+            "key": "Keep-Alive",
+            "value": "timeout=72"
+          }
+        ],
+        "body": {
+          "success": true,
+          "statusCode": 201,
+          "message": "Success",
+          "data": {
+            "accessToken": "[REDACTED]",
+            "refreshToken": "[REDACTED]"
+          },
+          "timestamp": "2026-08-13T10:11:36.820Z",
+          "path": "/api/v1/auth/otp/verify"
+        }
+      },
+      "assertions": [
+        {
+          "name": "HTTP status matches the documented expectation",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Response uses the Homingo envelope",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Success data is populated and error data is null",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Existing customer token pair is populated",
+          "passed": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "sequence": 14,
+      "name": "14 - Confirm existing login resolves the same customer",
+      "request": {
+        "method": "GET",
+        "url": "",
+        "headers": [
+          {
+            "key": "User-Agent",
+            "value": "PostmanRuntime/7.39.1"
+          },
+          {
+            "key": "Accept",
+            "value": "*/*"
+          },
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          },
+          {
+            "key": "Postman-Token",
+            "value": "4f4cd2bc-ee6e-4f5a-913d-4a5490bc5868"
+          },
+          {
+            "key": "Host",
+            "value": "127.0.0.1:53014"
+          },
+          {
+            "key": "Accept-Encoding",
+            "value": "gzip, deflate, br"
+          },
+          {
+            "key": "Connection",
+            "value": "keep-alive"
+          }
+        ],
+        "hasBody": false
+      },
+      "response": {
+        "status": "OK",
+        "code": 200,
+        "responseTimeMs": 43,
+        "responseSizeBytes": 350,
+        "headers": [
+          {
+            "key": "access-control-allow-origin",
+            "value": "http://localhost:3000"
+          },
+          {
+            "key": "content-type",
+            "value": "application/json; charset=utf-8"
+          },
+          {
+            "key": "content-length",
+            "value": "350"
+          },
+          {
+            "key": "Date",
+            "value": "Thu, 13 Aug 2026 10:11:36 GMT"
+          },
+          {
+            "key": "Connection",
+            "value": "keep-alive"
+          },
+          {
+            "key": "Keep-Alive",
+            "value": "timeout=72"
+          }
+        ],
+        "body": {
+          "success": true,
+          "statusCode": 200,
+          "message": "Success",
+          "data": {
+            "id": "cccd78a5-a7cd-4303-9357-6d522bf92484",
+            "phone": "[REDACTED]",
+            "fullName": null,
+            "email": null,
+            "status": "verified",
+            "defaultAddressId": null,
+            "createdAt": "2026-08-13T10:11:35.300Z",
+            "updatedAt": "2026-08-13T10:11:36.305Z"
+          },
+          "timestamp": "2026-08-13T10:11:36.973Z",
+          "path": "/api/v1/customers/me"
+        }
+      },
+      "assertions": [
+        {
+          "name": "HTTP status matches the documented expectation",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Response uses the Homingo envelope",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Success data is populated and error data is null",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Login did not create a duplicate customer",
+          "passed": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "sequence": 15,
+      "name": "15 - Request Pro registration OTP",
+      "request": {
+        "method": "POST",
+        "url": "",
+        "headers": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "User-Agent",
+            "value": "PostmanRuntime/7.39.1"
+          },
+          {
+            "key": "Accept",
+            "value": "*/*"
+          },
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          },
+          {
+            "key": "Postman-Token",
+            "value": "f2323d0b-4a33-4267-aaac-048ed24696bc"
+          },
+          {
+            "key": "Host",
+            "value": "127.0.0.1:53014"
+          },
+          {
+            "key": "Accept-Encoding",
+            "value": "gzip, deflate, br"
+          },
+          {
+            "key": "Connection",
+            "value": "keep-alive"
+          },
+          {
+            "key": "Content-Length",
+            "value": "49"
+          }
+        ],
+        "hasBody": true,
+        "body": {
+          "phone": "[REDACTED]",
+          "actorType": "pro"
+        }
+      },
+      "response": {
+        "status": "Created",
+        "code": 201,
+        "responseTimeMs": 21,
+        "responseSizeBytes": 188,
+        "headers": [
+          {
+            "key": "access-control-allow-origin",
+            "value": "http://localhost:3000"
+          },
+          {
+            "key": "content-type",
+            "value": "application/json; charset=utf-8"
+          },
+          {
+            "key": "content-length",
+            "value": "188"
+          },
+          {
+            "key": "Date",
+            "value": "Thu, 13 Aug 2026 10:11:37 GMT"
+          },
+          {
+            "key": "Connection",
+            "value": "keep-alive"
+          },
+          {
+            "key": "Keep-Alive",
+            "value": "timeout=72"
+          }
+        ],
+        "body": {
+          "success": true,
+          "statusCode": 201,
+          "message": "Success",
+          "data": {
+            "providerRef": "[REDACTED]"
+          },
+          "timestamp": "2026-08-13T10:11:37.124Z",
+          "path": "/api/v1/auth/otp/request"
+        }
+      },
+      "assertions": [
+        {
+          "name": "HTTP status matches the documented expectation",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Response uses the Homingo envelope",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Success data is populated and error data is null",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Pro provider reference is populated",
+          "passed": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "sequence": 16,
+      "name": "16 - Verify OTP and register Pro",
+      "request": {
+        "method": "POST",
+        "url": "",
+        "headers": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "User-Agent",
+            "value": "PostmanRuntime/7.39.1"
+          },
+          {
+            "key": "Accept",
+            "value": "*/*"
+          },
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          },
+          {
+            "key": "Postman-Token",
+            "value": "eaba26f9-fbc1-41a1-89b1-e6d670d5e074"
+          },
+          {
+            "key": "Host",
+            "value": "127.0.0.1:53014"
+          },
+          {
+            "key": "Accept-Encoding",
+            "value": "gzip, deflate, br"
+          },
+          {
+            "key": "Connection",
+            "value": "keep-alive"
+          },
+          {
+            "key": "Content-Length",
+            "value": "126"
+          }
+        ],
+        "hasBody": true,
+        "body": {
+          "phone": "[REDACTED]",
+          "code": "[REDACTED]",
+          "providerRef": "[REDACTED]",
+          "actorType": "pro"
+        }
+      },
+      "response": {
+        "status": "Created",
+        "code": 201,
+        "responseTimeMs": 127,
+        "responseSizeBytes": 724,
+        "headers": [
+          {
+            "key": "access-control-allow-origin",
+            "value": "http://localhost:3000"
+          },
+          {
+            "key": "content-type",
+            "value": "application/json; charset=utf-8"
+          },
+          {
+            "key": "content-length",
+            "value": "724"
+          },
+          {
+            "key": "Date",
+            "value": "Thu, 13 Aug 2026 10:11:37 GMT"
+          },
+          {
+            "key": "Connection",
+            "value": "keep-alive"
+          },
+          {
+            "key": "Keep-Alive",
+            "value": "timeout=72"
+          }
+        ],
+        "body": {
+          "success": true,
+          "statusCode": 201,
+          "message": "Success",
+          "data": {
+            "accessToken": "[REDACTED]",
+            "refreshToken": "[REDACTED]"
+          },
+          "timestamp": "2026-08-13T10:11:37.389Z",
+          "path": "/api/v1/auth/otp/verify"
+        }
+      },
+      "assertions": [
+        {
+          "name": "HTTP status matches the documented expectation",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Response uses the Homingo envelope",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Success data is populated and error data is null",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Pro token pair is populated",
+          "passed": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "sequence": 17,
+      "name": "17 - Validate persisted Pro registration",
+      "request": {
+        "method": "GET",
+        "url": "",
+        "headers": [
+          {
+            "key": "User-Agent",
+            "value": "PostmanRuntime/7.39.1"
+          },
+          {
+            "key": "Accept",
+            "value": "*/*"
+          },
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          },
+          {
+            "key": "Postman-Token",
+            "value": "4750b319-8bb6-4939-83e5-12c9518b6ae6"
+          },
+          {
+            "key": "Host",
+            "value": "127.0.0.1:53014"
+          },
+          {
+            "key": "Accept-Encoding",
+            "value": "gzip, deflate, br"
+          },
+          {
+            "key": "Connection",
+            "value": "keep-alive"
+          }
+        ],
+        "hasBody": false
+      },
+      "response": {
+        "status": "OK",
+        "code": 200,
+        "responseTimeMs": 28,
+        "responseSizeBytes": 1093,
+        "headers": [
+          {
+            "key": "access-control-allow-origin",
+            "value": "http://localhost:3000"
+          },
+          {
+            "key": "content-type",
+            "value": "application/json; charset=utf-8"
+          },
+          {
+            "key": "content-length",
+            "value": "1093"
+          },
+          {
+            "key": "Date",
+            "value": "Thu, 13 Aug 2026 10:11:37 GMT"
+          },
+          {
+            "key": "Connection",
+            "value": "keep-alive"
+          },
+          {
+            "key": "Keep-Alive",
+            "value": "timeout=72"
+          }
+        ],
+        "body": {
+          "success": true,
+          "statusCode": 200,
+          "message": "Success",
+          "data": {
+            "id": "79b78931-d737-4486-b3c5-85910e8ebbaf",
+            "createdAt": "2026-08-13T10:11:37.334Z",
+            "updatedAt": "2026-08-13T10:11:37.334Z",
+            "phone": "[REDACTED]",
+            "fullName": null,
+            "dateOfBirth": null,
+            "gender": null,
+            "profilePhotoUrl": null,
+            "email": null,
+            "languages": [],
+            "emergencyContactName": null,
+            "emergencyContactPhone": null,
+            "emergencyContactRelation": null,
+            "addressLine": null,
+            "employeeCode": null,
+            "monthlySalary": null,
+            "salaryUpdatedAt": null,
+            "status": "applied",
+            "suspendedReason": null,
+            "suspendedAt": null,
+            "suspendedByAdminId": null,
+            "approvedApplicationId": null,
+            "isAvailable": false,
+            "availabilityUpdatedAt": null,
+            "pushToken": null,
+            "pushPlatform": null,
+            "pushTokenUpdatedAt": null,
+            "homeBaseLat": null,
+            "homeBaseLng": null,
+            "lastKnownLat": null,
+            "lastKnownLng": null,
+            "lastLocationAt": null,
+            "cityId": null,
+            "ratingSum": 0,
+            "ratingCount": 0,
+            "assignmentsOffered": 0,
+            "assignmentsAcknowledged": 0,
+            "acceptanceRate": null,
+            "completedJobs": 0,
+            "countersRebuiltAt": null,
+            "cashInHand": "0",
+            "approvedAt": null,
+            "razorpayxContactId": null
+          },
+          "timestamp": "2026-08-13T10:11:37.546Z",
+          "path": "/api/v1/pros/me"
+        }
+      },
+      "assertions": [
+        {
+          "name": "HTTP status matches the documented expectation",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Response uses the Homingo envelope",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Success data is populated and error data is null",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Pro registration contains real initialized data",
+          "passed": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "sequence": 18,
+      "name": "18 - Rotate customer refresh token",
+      "request": {
+        "method": "POST",
+        "url": "",
+        "headers": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "User-Agent",
+            "value": "PostmanRuntime/7.39.1"
+          },
+          {
+            "key": "Accept",
+            "value": "*/*"
+          },
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          },
+          {
+            "key": "Postman-Token",
+            "value": "d5403b6f-bb96-48c5-8d7b-55c8fb3bdf24"
+          },
+          {
+            "key": "Host",
+            "value": "127.0.0.1:53014"
+          },
+          {
+            "key": "Accept-Encoding",
+            "value": "gzip, deflate, br"
+          },
+          {
+            "key": "Connection",
+            "value": "keep-alive"
+          },
+          {
+            "key": "Content-Length",
+            "value": "325"
+          }
+        ],
+        "hasBody": true,
+        "body": {
+          "refreshToken": "[REDACTED]"
+        }
+      },
+      "response": {
+        "status": "Created",
+        "code": 201,
+        "responseTimeMs": 25,
+        "responseSizeBytes": 734,
+        "headers": [
+          {
+            "key": "access-control-allow-origin",
+            "value": "http://localhost:3000"
+          },
+          {
+            "key": "content-type",
+            "value": "application/json; charset=utf-8"
+          },
+          {
+            "key": "content-length",
+            "value": "734"
+          },
+          {
+            "key": "Date",
+            "value": "Thu, 13 Aug 2026 10:11:37 GMT"
+          },
+          {
+            "key": "Connection",
+            "value": "keep-alive"
+          },
+          {
+            "key": "Keep-Alive",
+            "value": "timeout=72"
+          }
+        ],
+        "body": {
+          "success": true,
+          "statusCode": 201,
+          "message": "Success",
+          "data": {
+            "accessToken": "[REDACTED]",
+            "refreshToken": "[REDACTED]"
+          },
+          "timestamp": "2026-08-13T10:11:37.667Z",
+          "path": "/api/v1/auth/refresh"
+        }
+      },
+      "assertions": [
+        {
+          "name": "HTTP status matches the documented expectation",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Response uses the Homingo envelope",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Success data is populated and error data is null",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Rotated customer token pair is populated",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Refresh token actually rotated",
+          "passed": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "sequence": 19,
+      "name": "19 - Reject replay of rotated refresh token",
+      "request": {
+        "method": "POST",
+        "url": "",
+        "headers": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "User-Agent",
+            "value": "PostmanRuntime/7.39.1"
+          },
+          {
+            "key": "Accept",
+            "value": "*/*"
+          },
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          },
+          {
+            "key": "Postman-Token",
+            "value": "c33819d4-a249-42f0-933d-bfdb1b930ff8"
+          },
+          {
+            "key": "Host",
+            "value": "127.0.0.1:53014"
+          },
+          {
+            "key": "Accept-Encoding",
+            "value": "gzip, deflate, br"
+          },
+          {
+            "key": "Connection",
+            "value": "keep-alive"
+          },
+          {
+            "key": "Content-Length",
+            "value": "325"
+          }
+        ],
+        "hasBody": true,
+        "body": {
+          "refreshToken": "[REDACTED]"
+        }
+      },
+      "response": {
+        "status": "Unauthorized",
+        "code": 401,
+        "responseTimeMs": 23,
+        "responseSizeBytes": 179,
+        "headers": [
+          {
+            "key": "access-control-allow-origin",
+            "value": "http://localhost:3000"
+          },
+          {
+            "key": "content-type",
+            "value": "application/json; charset=utf-8"
+          },
+          {
+            "key": "content-length",
+            "value": "179"
+          },
+          {
+            "key": "Date",
+            "value": "Thu, 13 Aug 2026 10:11:37 GMT"
+          },
+          {
+            "key": "Connection",
+            "value": "keep-alive"
+          },
+          {
+            "key": "Keep-Alive",
+            "value": "timeout=72"
+          }
+        ],
+        "body": {
+          "success": false,
+          "statusCode": 401,
+          "message": "Refresh token already used or revoked",
+          "data": null,
+          "errors": null,
+          "timestamp": "2026-08-13T10:11:37.808Z",
+          "path": "/api/v1/auth/refresh"
+        }
+      },
+      "assertions": [
+        {
+          "name": "HTTP status matches the documented expectation",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Response uses the Homingo envelope",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Success data is populated and error data is null",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Replay is explicitly rejected",
+          "passed": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "sequence": 20,
+      "name": "20 - Confirm replay revoked the rotated session",
+      "request": {
+        "method": "POST",
+        "url": "",
+        "headers": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "User-Agent",
+            "value": "PostmanRuntime/7.39.1"
+          },
+          {
+            "key": "Accept",
+            "value": "*/*"
+          },
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          },
+          {
+            "key": "Postman-Token",
+            "value": "1697efc5-65b7-4aeb-9cec-9155a2f377a2"
+          },
+          {
+            "key": "Host",
+            "value": "127.0.0.1:53014"
+          },
+          {
+            "key": "Accept-Encoding",
+            "value": "gzip, deflate, br"
+          },
+          {
+            "key": "Connection",
+            "value": "keep-alive"
+          },
+          {
+            "key": "Content-Length",
+            "value": "325"
+          }
+        ],
+        "hasBody": true,
+        "body": {
+          "refreshToken": "[REDACTED]"
+        }
+      },
+      "response": {
+        "status": "Unauthorized",
+        "code": 401,
+        "responseTimeMs": 22,
+        "responseSizeBytes": 179,
+        "headers": [
+          {
+            "key": "access-control-allow-origin",
+            "value": "http://localhost:3000"
+          },
+          {
+            "key": "content-type",
+            "value": "application/json; charset=utf-8"
+          },
+          {
+            "key": "content-length",
+            "value": "179"
+          },
+          {
+            "key": "Date",
+            "value": "Thu, 13 Aug 2026 10:11:37 GMT"
+          },
+          {
+            "key": "Connection",
+            "value": "keep-alive"
+          },
+          {
+            "key": "Keep-Alive",
+            "value": "timeout=72"
+          }
+        ],
+        "body": {
+          "success": false,
+          "statusCode": 401,
+          "message": "Refresh token already used or revoked",
+          "data": null,
+          "errors": null,
+          "timestamp": "2026-08-13T10:11:37.948Z",
+          "path": "/api/v1/auth/refresh"
+        }
+      },
+      "assertions": [
+        {
+          "name": "HTTP status matches the documented expectation",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Response uses the Homingo envelope",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Success data is populated and error data is null",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Rotated session was revoked after replay",
+          "passed": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "sequence": 21,
+      "name": "21 - Logout Pro single session",
+      "request": {
+        "method": "POST",
+        "url": "",
+        "headers": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "User-Agent",
+            "value": "PostmanRuntime/7.39.1"
+          },
+          {
+            "key": "Accept",
+            "value": "*/*"
+          },
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          },
+          {
+            "key": "Postman-Token",
+            "value": "4272fea5-d6b9-49ef-80fa-b8e22598d410"
+          },
+          {
+            "key": "Host",
+            "value": "127.0.0.1:53014"
+          },
+          {
+            "key": "Accept-Encoding",
+            "value": "gzip, deflate, br"
+          },
+          {
+            "key": "Connection",
+            "value": "keep-alive"
+          },
+          {
+            "key": "Content-Length",
+            "value": "319"
+          }
+        ],
+        "hasBody": true,
+        "body": {
+          "refreshToken": "[REDACTED]"
+        }
+      },
+      "response": {
+        "status": "No Content",
+        "code": 204,
+        "responseTimeMs": 8,
+        "responseSizeBytes": 0,
+        "headers": [
+          {
+            "key": "access-control-allow-origin",
+            "value": "http://localhost:3000"
+          },
+          {
+            "key": "Date",
+            "value": "Thu, 13 Aug 2026 10:11:38 GMT"
+          },
+          {
+            "key": "Connection",
+            "value": "keep-alive"
+          },
+          {
+            "key": "Keep-Alive",
+            "value": "timeout=72"
+          }
+        ],
+        "body": null
+      },
+      "assertions": [
+        {
+          "name": "HTTP status matches the documented expectation",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Logout response is truly bodyless",
+          "passed": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "sequence": 22,
+      "name": "22 - Reject refresh after single-session logout",
+      "request": {
+        "method": "POST",
+        "url": "",
+        "headers": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "User-Agent",
+            "value": "PostmanRuntime/7.39.1"
+          },
+          {
+            "key": "Accept",
+            "value": "*/*"
+          },
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          },
+          {
+            "key": "Postman-Token",
+            "value": "e03b668e-c89c-4949-8f32-b3e1bbcda855"
+          },
+          {
+            "key": "Host",
+            "value": "127.0.0.1:53014"
+          },
+          {
+            "key": "Accept-Encoding",
+            "value": "gzip, deflate, br"
+          },
+          {
+            "key": "Connection",
+            "value": "keep-alive"
+          },
+          {
+            "key": "Content-Length",
+            "value": "319"
+          }
+        ],
+        "hasBody": true,
+        "body": {
+          "refreshToken": "[REDACTED]"
+        }
+      },
+      "response": {
+        "status": "Unauthorized",
+        "code": 401,
+        "responseTimeMs": 10,
+        "responseSizeBytes": 179,
+        "headers": [
+          {
+            "key": "access-control-allow-origin",
+            "value": "http://localhost:3000"
+          },
+          {
+            "key": "content-type",
+            "value": "application/json; charset=utf-8"
+          },
+          {
+            "key": "content-length",
+            "value": "179"
+          },
+          {
+            "key": "Date",
+            "value": "Thu, 13 Aug 2026 10:11:38 GMT"
+          },
+          {
+            "key": "Connection",
+            "value": "keep-alive"
+          },
+          {
+            "key": "Keep-Alive",
+            "value": "timeout=72"
+          }
+        ],
+        "body": {
+          "success": false,
+          "statusCode": 401,
+          "message": "Refresh token already used or revoked",
+          "data": null,
+          "errors": null,
+          "timestamp": "2026-08-13T10:11:38.190Z",
+          "path": "/api/v1/auth/refresh"
+        }
+      },
+      "assertions": [
+        {
+          "name": "HTTP status matches the documented expectation",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Response uses the Homingo envelope",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Success data is populated and error data is null",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Logged-out session cannot refresh",
+          "passed": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "sequence": 23,
+      "name": "23 - Request OTP for logout-all session",
+      "request": {
+        "method": "POST",
+        "url": "",
+        "headers": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "User-Agent",
+            "value": "PostmanRuntime/7.39.1"
+          },
+          {
+            "key": "Accept",
+            "value": "*/*"
+          },
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          },
+          {
+            "key": "Postman-Token",
+            "value": "ce650a11-e3c0-4aa1-8b1c-89fe80d1cf10"
+          },
+          {
+            "key": "Host",
+            "value": "127.0.0.1:53014"
+          },
+          {
+            "key": "Accept-Encoding",
+            "value": "gzip, deflate, br"
+          },
+          {
+            "key": "Connection",
+            "value": "keep-alive"
+          },
+          {
+            "key": "Content-Length",
+            "value": "54"
+          }
+        ],
+        "hasBody": true,
+        "body": {
+          "phone": "[REDACTED]",
+          "actorType": "customer"
+        }
+      },
+      "response": {
+        "status": "Created",
+        "code": 201,
+        "responseTimeMs": 12,
+        "responseSizeBytes": 188,
+        "headers": [
+          {
+            "key": "access-control-allow-origin",
+            "value": "http://localhost:3000"
+          },
+          {
+            "key": "content-type",
+            "value": "application/json; charset=utf-8"
+          },
+          {
+            "key": "content-length",
+            "value": "188"
+          },
+          {
+            "key": "Date",
+            "value": "Thu, 13 Aug 2026 10:11:38 GMT"
+          },
+          {
+            "key": "Connection",
+            "value": "keep-alive"
+          },
+          {
+            "key": "Keep-Alive",
+            "value": "timeout=72"
+          }
+        ],
+        "body": {
+          "success": true,
+          "statusCode": 201,
+          "message": "Success",
+          "data": {
+            "providerRef": "[REDACTED]"
+          },
+          "timestamp": "2026-08-13T10:11:38.282Z",
+          "path": "/api/v1/auth/otp/request"
+        }
+      },
+      "assertions": [
+        {
+          "name": "HTTP status matches the documented expectation",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Response uses the Homingo envelope",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Success data is populated and error data is null",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Session OTP reference exists",
+          "passed": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "sequence": 24,
+      "name": "24 - Verify logout-all customer session",
+      "request": {
+        "method": "POST",
+        "url": "",
+        "headers": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "User-Agent",
+            "value": "PostmanRuntime/7.39.1"
+          },
+          {
+            "key": "Accept",
+            "value": "*/*"
+          },
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          },
+          {
+            "key": "Postman-Token",
+            "value": "99261047-f90e-46bc-9f47-1a67ecdbcf14"
+          },
+          {
+            "key": "Host",
+            "value": "127.0.0.1:53014"
+          },
+          {
+            "key": "Accept-Encoding",
+            "value": "gzip, deflate, br"
+          },
+          {
+            "key": "Connection",
+            "value": "keep-alive"
+          },
+          {
+            "key": "Content-Length",
+            "value": "131"
+          }
+        ],
+        "hasBody": true,
+        "body": {
+          "phone": "[REDACTED]",
+          "code": "[REDACTED]",
+          "providerRef": "[REDACTED]",
+          "actorType": "customer"
+        }
+      },
+      "response": {
+        "status": "Created",
+        "code": 201,
+        "responseTimeMs": 46,
+        "responseSizeBytes": 737,
+        "headers": [
+          {
+            "key": "access-control-allow-origin",
+            "value": "http://localhost:3000"
+          },
+          {
+            "key": "content-type",
+            "value": "application/json; charset=utf-8"
+          },
+          {
+            "key": "content-length",
+            "value": "737"
+          },
+          {
+            "key": "Date",
+            "value": "Thu, 13 Aug 2026 10:11:38 GMT"
+          },
+          {
+            "key": "Connection",
+            "value": "keep-alive"
+          },
+          {
+            "key": "Keep-Alive",
+            "value": "timeout=72"
+          }
+        ],
+        "body": {
+          "success": true,
+          "statusCode": 201,
+          "message": "Success",
+          "data": {
+            "accessToken": "[REDACTED]",
+            "refreshToken": "[REDACTED]"
+          },
+          "timestamp": "2026-08-13T10:11:38.440Z",
+          "path": "/api/v1/auth/otp/verify"
+        }
+      },
+      "assertions": [
+        {
+          "name": "HTTP status matches the documented expectation",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Response uses the Homingo envelope",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Success data is populated and error data is null",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Logout-all customer token pair is populated",
+          "passed": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "sequence": 25,
+      "name": "25 - Revoke every current customer session",
+      "request": {
+        "method": "POST",
+        "url": "",
+        "headers": [
+          {
+            "key": "User-Agent",
+            "value": "PostmanRuntime/7.39.1"
+          },
+          {
+            "key": "Accept",
+            "value": "*/*"
+          },
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          },
+          {
+            "key": "Postman-Token",
+            "value": "c8f3451a-8a73-4275-9db1-eb0d0ce84b3f"
+          },
+          {
+            "key": "Host",
+            "value": "127.0.0.1:53014"
+          },
+          {
+            "key": "Accept-Encoding",
+            "value": "gzip, deflate, br"
+          },
+          {
+            "key": "Connection",
+            "value": "keep-alive"
+          },
+          {
+            "key": "Content-Length",
+            "value": "0"
+          }
+        ],
+        "hasBody": false
+      },
+      "response": {
+        "status": "No Content",
+        "code": 204,
+        "responseTimeMs": 10,
+        "responseSizeBytes": 0,
+        "headers": [
+          {
+            "key": "access-control-allow-origin",
+            "value": "http://localhost:3000"
+          },
+          {
+            "key": "Date",
+            "value": "Thu, 13 Aug 2026 10:11:38 GMT"
+          },
+          {
+            "key": "Connection",
+            "value": "keep-alive"
+          },
+          {
+            "key": "Keep-Alive",
+            "value": "timeout=72"
+          }
+        ],
+        "body": null
+      },
+      "assertions": [
+        {
+          "name": "HTTP status matches the documented expectation",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Logout-all response is bodyless",
+          "passed": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "sequence": 26,
+      "name": "26 - Reject refresh after logout-all",
+      "request": {
+        "method": "POST",
+        "url": "",
+        "headers": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "User-Agent",
+            "value": "PostmanRuntime/7.39.1"
+          },
+          {
+            "key": "Accept",
+            "value": "*/*"
+          },
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          },
+          {
+            "key": "Postman-Token",
+            "value": "9b30318f-4dbf-4060-a638-c2491548b85b"
+          },
+          {
+            "key": "Host",
+            "value": "127.0.0.1:53014"
+          },
+          {
+            "key": "Accept-Encoding",
+            "value": "gzip, deflate, br"
+          },
+          {
+            "key": "Connection",
+            "value": "keep-alive"
+          },
+          {
+            "key": "Content-Length",
+            "value": "325"
+          }
+        ],
+        "hasBody": true,
+        "body": {
+          "refreshToken": "[REDACTED]"
+        }
+      },
+      "response": {
+        "status": "Unauthorized",
+        "code": 401,
+        "responseTimeMs": 7,
+        "responseSizeBytes": 179,
+        "headers": [
+          {
+            "key": "access-control-allow-origin",
+            "value": "http://localhost:3000"
+          },
+          {
+            "key": "content-type",
+            "value": "application/json; charset=utf-8"
+          },
+          {
+            "key": "content-length",
+            "value": "179"
+          },
+          {
+            "key": "Date",
+            "value": "Thu, 13 Aug 2026 10:11:38 GMT"
+          },
+          {
+            "key": "Connection",
+            "value": "keep-alive"
+          },
+          {
+            "key": "Keep-Alive",
+            "value": "timeout=72"
+          }
+        ],
+        "body": {
+          "success": false,
+          "statusCode": 401,
+          "message": "Refresh token already used or revoked",
+          "data": null,
+          "errors": null,
+          "timestamp": "2026-08-13T10:11:38.706Z",
+          "path": "/api/v1/auth/refresh"
+        }
+      },
+      "assertions": [
+        {
+          "name": "HTTP status matches the documented expectation",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Response uses the Homingo envelope",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Success data is populated and error data is null",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Logout-all revoked the stored session",
+          "passed": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "sequence": 27,
+      "name": "27 - Reject logout-all without bearer token",
+      "request": {
+        "method": "POST",
+        "url": "",
+        "headers": [
+          {
+            "key": "User-Agent",
+            "value": "PostmanRuntime/7.39.1"
+          },
+          {
+            "key": "Accept",
+            "value": "*/*"
+          },
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          },
+          {
+            "key": "Postman-Token",
+            "value": "065b2136-0a3c-46e4-ba6e-fbbd853bb454"
+          },
+          {
+            "key": "Host",
+            "value": "127.0.0.1:53014"
+          },
+          {
+            "key": "Accept-Encoding",
+            "value": "gzip, deflate, br"
+          },
+          {
+            "key": "Connection",
+            "value": "keep-alive"
+          },
+          {
+            "key": "Content-Length",
+            "value": "0"
+          }
+        ],
+        "hasBody": false
+      },
+      "response": {
+        "status": "Unauthorized",
+        "code": 401,
+        "responseTimeMs": 11,
+        "responseSizeBytes": 165,
+        "headers": [
+          {
+            "key": "access-control-allow-origin",
+            "value": "http://localhost:3000"
+          },
+          {
+            "key": "content-type",
+            "value": "application/json; charset=utf-8"
+          },
+          {
+            "key": "content-length",
+            "value": "165"
+          },
+          {
+            "key": "Date",
+            "value": "Thu, 13 Aug 2026 10:11:38 GMT"
+          },
+          {
+            "key": "Connection",
+            "value": "keep-alive"
+          },
+          {
+            "key": "Keep-Alive",
+            "value": "timeout=72"
+          }
+        ],
+        "body": {
+          "success": false,
+          "statusCode": 401,
+          "message": "Missing bearer token",
+          "data": null,
+          "errors": null,
+          "timestamp": "2026-08-13T10:11:38.804Z",
+          "path": "/api/v1/auth/logout-all"
+        }
+      },
+      "assertions": [
+        {
+          "name": "HTTP status matches the documented expectation",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Response uses the Homingo envelope",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Success data is populated and error data is null",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Missing bearer token is explicit",
+          "passed": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "sequence": 28,
+      "name": "28 - Reject invalid Firebase admin identity token",
+      "request": {
+        "method": "POST",
+        "url": "",
+        "headers": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "User-Agent",
+            "value": "PostmanRuntime/7.39.1"
+          },
+          {
+            "key": "Accept",
+            "value": "*/*"
+          },
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          },
+          {
+            "key": "Postman-Token",
+            "value": "6f4e8472-e1ed-4fcd-8fcb-cd40b7f10aa6"
+          },
+          {
+            "key": "Host",
+            "value": "127.0.0.1:53014"
+          },
+          {
+            "key": "Accept-Encoding",
+            "value": "gzip, deflate, br"
+          },
+          {
+            "key": "Connection",
+            "value": "keep-alive"
+          },
+          {
+            "key": "Content-Length",
+            "value": "44"
+          }
+        ],
+        "hasBody": true,
+        "body": {
+          "idToken": "[REDACTED]"
+        }
+      },
+      "response": {
+        "status": "Unauthorized",
+        "code": 401,
+        "responseTimeMs": 9,
+        "responseSizeBytes": 188,
+        "headers": [
+          {
+            "key": "access-control-allow-origin",
+            "value": "http://localhost:3000"
+          },
+          {
+            "key": "content-type",
+            "value": "application/json; charset=utf-8"
+          },
+          {
+            "key": "content-length",
+            "value": "188"
+          },
+          {
+            "key": "Date",
+            "value": "Thu, 13 Aug 2026 10:11:38 GMT"
+          },
+          {
+            "key": "Connection",
+            "value": "keep-alive"
+          },
+          {
+            "key": "Keep-Alive",
+            "value": "timeout=72"
+          }
+        ],
+        "body": {
+          "success": false,
+          "statusCode": 401,
+          "message": "Invalid or expired identity token",
+          "data": null,
+          "errors": null,
+          "timestamp": "2026-08-13T10:11:38.927Z",
+          "path": "/api/v1/auth/admin/firebase-login"
+        }
+      },
+      "assertions": [
+        {
+          "name": "HTTP status matches the documented expectation",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Response uses the Homingo envelope",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Success data is populated and error data is null",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Invalid Firebase token is rejected without data",
+          "passed": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "sequence": 29,
+      "name": "29.1 - OTP request rate limit attempt 1",
+      "request": {
+        "method": "POST",
+        "url": "",
+        "headers": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "User-Agent",
+            "value": "PostmanRuntime/7.39.1"
+          },
+          {
+            "key": "Accept",
+            "value": "*/*"
+          },
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          },
+          {
+            "key": "Postman-Token",
+            "value": "cfafa831-6f97-4dad-a658-02f4f3be9fa9"
+          },
+          {
+            "key": "Host",
+            "value": "127.0.0.1:53014"
+          },
+          {
+            "key": "Accept-Encoding",
+            "value": "gzip, deflate, br"
+          },
+          {
+            "key": "Connection",
+            "value": "keep-alive"
+          },
+          {
+            "key": "Content-Length",
+            "value": "54"
+          }
+        ],
+        "hasBody": true,
+        "body": {
+          "phone": "[REDACTED]",
+          "actorType": "customer"
+        }
+      },
+      "response": {
+        "status": "Created",
+        "code": 201,
+        "responseTimeMs": 14,
+        "responseSizeBytes": 188,
+        "headers": [
+          {
+            "key": "access-control-allow-origin",
+            "value": "http://localhost:3000"
+          },
+          {
+            "key": "content-type",
+            "value": "application/json; charset=utf-8"
+          },
+          {
+            "key": "content-length",
+            "value": "188"
+          },
+          {
+            "key": "Date",
+            "value": "Thu, 13 Aug 2026 10:11:39 GMT"
+          },
+          {
+            "key": "Connection",
+            "value": "keep-alive"
+          },
+          {
+            "key": "Keep-Alive",
+            "value": "timeout=72"
+          }
+        ],
+        "body": {
+          "success": true,
+          "statusCode": 201,
+          "message": "Success",
+          "data": {
+            "providerRef": "[REDACTED]"
+          },
+          "timestamp": "2026-08-13T10:11:39.025Z",
+          "path": "/api/v1/auth/otp/request"
+        }
+      },
+      "assertions": [
+        {
+          "name": "HTTP status matches the documented expectation",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Response uses the Homingo envelope",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Success data is populated and error data is null",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Allowed request returned a provider reference",
+          "passed": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "sequence": 30,
+      "name": "29.2 - OTP request rate limit attempt 2",
+      "request": {
+        "method": "POST",
+        "url": "",
+        "headers": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "User-Agent",
+            "value": "PostmanRuntime/7.39.1"
+          },
+          {
+            "key": "Accept",
+            "value": "*/*"
+          },
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          },
+          {
+            "key": "Postman-Token",
+            "value": "5a1dbd5d-dab1-45b4-8c7e-49e888966a41"
+          },
+          {
+            "key": "Host",
+            "value": "127.0.0.1:53014"
+          },
+          {
+            "key": "Accept-Encoding",
+            "value": "gzip, deflate, br"
+          },
+          {
+            "key": "Connection",
+            "value": "keep-alive"
+          },
+          {
+            "key": "Content-Length",
+            "value": "54"
+          }
+        ],
+        "hasBody": true,
+        "body": {
+          "phone": "[REDACTED]",
+          "actorType": "customer"
+        }
+      },
+      "response": {
+        "status": "Created",
+        "code": 201,
+        "responseTimeMs": 8,
+        "responseSizeBytes": 188,
+        "headers": [
+          {
+            "key": "access-control-allow-origin",
+            "value": "http://localhost:3000"
+          },
+          {
+            "key": "content-type",
+            "value": "application/json; charset=utf-8"
+          },
+          {
+            "key": "content-length",
+            "value": "188"
+          },
+          {
+            "key": "Date",
+            "value": "Thu, 13 Aug 2026 10:11:39 GMT"
+          },
+          {
+            "key": "Connection",
+            "value": "keep-alive"
+          },
+          {
+            "key": "Keep-Alive",
+            "value": "timeout=72"
+          }
+        ],
+        "body": {
+          "success": true,
+          "statusCode": 201,
+          "message": "Success",
+          "data": {
+            "providerRef": "[REDACTED]"
+          },
+          "timestamp": "2026-08-13T10:11:39.147Z",
+          "path": "/api/v1/auth/otp/request"
+        }
+      },
+      "assertions": [
+        {
+          "name": "HTTP status matches the documented expectation",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Response uses the Homingo envelope",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Success data is populated and error data is null",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Allowed request returned a provider reference",
+          "passed": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "sequence": 31,
+      "name": "29.3 - OTP request rate limit attempt 3",
+      "request": {
+        "method": "POST",
+        "url": "",
+        "headers": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "User-Agent",
+            "value": "PostmanRuntime/7.39.1"
+          },
+          {
+            "key": "Accept",
+            "value": "*/*"
+          },
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          },
+          {
+            "key": "Postman-Token",
+            "value": "e31b6545-c4e8-4471-9f5b-edd6f3d2bbce"
+          },
+          {
+            "key": "Host",
+            "value": "127.0.0.1:53014"
+          },
+          {
+            "key": "Accept-Encoding",
+            "value": "gzip, deflate, br"
+          },
+          {
+            "key": "Connection",
+            "value": "keep-alive"
+          },
+          {
+            "key": "Content-Length",
+            "value": "54"
+          }
+        ],
+        "hasBody": true,
+        "body": {
+          "phone": "[REDACTED]",
+          "actorType": "customer"
+        }
+      },
+      "response": {
+        "status": "Created",
+        "code": 201,
+        "responseTimeMs": 8,
+        "responseSizeBytes": 188,
+        "headers": [
+          {
+            "key": "access-control-allow-origin",
+            "value": "http://localhost:3000"
+          },
+          {
+            "key": "content-type",
+            "value": "application/json; charset=utf-8"
+          },
+          {
+            "key": "content-length",
+            "value": "188"
+          },
+          {
+            "key": "Date",
+            "value": "Thu, 13 Aug 2026 10:11:39 GMT"
+          },
+          {
+            "key": "Connection",
+            "value": "keep-alive"
+          },
+          {
+            "key": "Keep-Alive",
+            "value": "timeout=72"
+          }
+        ],
+        "body": {
+          "success": true,
+          "statusCode": 201,
+          "message": "Success",
+          "data": {
+            "providerRef": "[REDACTED]"
+          },
+          "timestamp": "2026-08-13T10:11:39.258Z",
+          "path": "/api/v1/auth/otp/request"
+        }
+      },
+      "assertions": [
+        {
+          "name": "HTTP status matches the documented expectation",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Response uses the Homingo envelope",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Success data is populated and error data is null",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Allowed request returned a provider reference",
+          "passed": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "sequence": 32,
+      "name": "29.4 - OTP request rate limit attempt 4",
+      "request": {
+        "method": "POST",
+        "url": "",
+        "headers": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "User-Agent",
+            "value": "PostmanRuntime/7.39.1"
+          },
+          {
+            "key": "Accept",
+            "value": "*/*"
+          },
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          },
+          {
+            "key": "Postman-Token",
+            "value": "557e0f4b-fec5-4ce7-a517-b51a2047d801"
+          },
+          {
+            "key": "Host",
+            "value": "127.0.0.1:53014"
+          },
+          {
+            "key": "Accept-Encoding",
+            "value": "gzip, deflate, br"
+          },
+          {
+            "key": "Connection",
+            "value": "keep-alive"
+          },
+          {
+            "key": "Content-Length",
+            "value": "54"
+          }
+        ],
+        "hasBody": true,
+        "body": {
+          "phone": "[REDACTED]",
+          "actorType": "customer"
+        }
+      },
+      "response": {
+        "status": "Created",
+        "code": 201,
+        "responseTimeMs": 7,
+        "responseSizeBytes": 188,
+        "headers": [
+          {
+            "key": "access-control-allow-origin",
+            "value": "http://localhost:3000"
+          },
+          {
+            "key": "content-type",
+            "value": "application/json; charset=utf-8"
+          },
+          {
+            "key": "content-length",
+            "value": "188"
+          },
+          {
+            "key": "Date",
+            "value": "Thu, 13 Aug 2026 10:11:39 GMT"
+          },
+          {
+            "key": "Connection",
+            "value": "keep-alive"
+          },
+          {
+            "key": "Keep-Alive",
+            "value": "timeout=72"
+          }
+        ],
+        "body": {
+          "success": true,
+          "statusCode": 201,
+          "message": "Success",
+          "data": {
+            "providerRef": "[REDACTED]"
+          },
+          "timestamp": "2026-08-13T10:11:39.370Z",
+          "path": "/api/v1/auth/otp/request"
+        }
+      },
+      "assertions": [
+        {
+          "name": "HTTP status matches the documented expectation",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Response uses the Homingo envelope",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Success data is populated and error data is null",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Allowed request returned a provider reference",
+          "passed": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "sequence": 33,
+      "name": "29.5 - OTP request rate limit attempt 5",
+      "request": {
+        "method": "POST",
+        "url": "",
+        "headers": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "User-Agent",
+            "value": "PostmanRuntime/7.39.1"
+          },
+          {
+            "key": "Accept",
+            "value": "*/*"
+          },
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          },
+          {
+            "key": "Postman-Token",
+            "value": "0c2a8369-2949-46fe-998e-b77d62fe644d"
+          },
+          {
+            "key": "Host",
+            "value": "127.0.0.1:53014"
+          },
+          {
+            "key": "Accept-Encoding",
+            "value": "gzip, deflate, br"
+          },
+          {
+            "key": "Connection",
+            "value": "keep-alive"
+          },
+          {
+            "key": "Content-Length",
+            "value": "54"
+          }
+        ],
+        "hasBody": true,
+        "body": {
+          "phone": "[REDACTED]",
+          "actorType": "customer"
+        }
+      },
+      "response": {
+        "status": "Created",
+        "code": 201,
+        "responseTimeMs": 8,
+        "responseSizeBytes": 188,
+        "headers": [
+          {
+            "key": "access-control-allow-origin",
+            "value": "http://localhost:3000"
+          },
+          {
+            "key": "content-type",
+            "value": "application/json; charset=utf-8"
+          },
+          {
+            "key": "content-length",
+            "value": "188"
+          },
+          {
+            "key": "Date",
+            "value": "Thu, 13 Aug 2026 10:11:39 GMT"
+          },
+          {
+            "key": "Connection",
+            "value": "keep-alive"
+          },
+          {
+            "key": "Keep-Alive",
+            "value": "timeout=72"
+          }
+        ],
+        "body": {
+          "success": true,
+          "statusCode": 201,
+          "message": "Success",
+          "data": {
+            "providerRef": "[REDACTED]"
+          },
+          "timestamp": "2026-08-13T10:11:39.464Z",
+          "path": "/api/v1/auth/otp/request"
+        }
+      },
+      "assertions": [
+        {
+          "name": "HTTP status matches the documented expectation",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Response uses the Homingo envelope",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Success data is populated and error data is null",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Allowed request returned a provider reference",
+          "passed": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "sequence": 34,
+      "name": "29.6 - OTP request rate limit attempt 6",
+      "request": {
+        "method": "POST",
+        "url": "",
+        "headers": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "User-Agent",
+            "value": "PostmanRuntime/7.39.1"
+          },
+          {
+            "key": "Accept",
+            "value": "*/*"
+          },
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          },
+          {
+            "key": "Postman-Token",
+            "value": "5648f965-543a-40d3-a59a-360a44dc9e16"
+          },
+          {
+            "key": "Host",
+            "value": "127.0.0.1:53014"
+          },
+          {
+            "key": "Accept-Encoding",
+            "value": "gzip, deflate, br"
+          },
+          {
+            "key": "Connection",
+            "value": "keep-alive"
+          },
+          {
+            "key": "Content-Length",
+            "value": "54"
+          }
+        ],
+        "hasBody": true,
+        "body": {
+          "phone": "[REDACTED]",
+          "actorType": "customer"
+        }
+      },
+      "response": {
+        "status": "Too Many Requests",
+        "code": 429,
+        "responseTimeMs": 7,
+        "responseSizeBytes": 201,
+        "headers": [
+          {
+            "key": "access-control-allow-origin",
+            "value": "http://localhost:3000"
+          },
+          {
+            "key": "content-type",
+            "value": "application/json; charset=utf-8"
+          },
+          {
+            "key": "content-length",
+            "value": "201"
+          },
+          {
+            "key": "Date",
+            "value": "Thu, 13 Aug 2026 10:11:39 GMT"
+          },
+          {
+            "key": "Connection",
+            "value": "keep-alive"
+          },
+          {
+            "key": "Keep-Alive",
+            "value": "timeout=72"
+          }
+        ],
+        "body": {
+          "success": false,
+          "statusCode": 429,
+          "message": "Too many OTP requests for this number - try again later",
+          "data": null,
+          "errors": null,
+          "timestamp": "2026-08-13T10:11:39.558Z",
+          "path": "/api/v1/auth/otp/request"
+        }
+      },
+      "assertions": [
+        {
+          "name": "HTTP status matches the documented expectation",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Response uses the Homingo envelope",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Success data is populated and error data is null",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Rate-limit response is explicit",
+          "passed": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "sequence": 35,
+      "name": "30 - Request OTP for incorrect-code lockout",
+      "request": {
+        "method": "POST",
+        "url": "",
+        "headers": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "User-Agent",
+            "value": "PostmanRuntime/7.39.1"
+          },
+          {
+            "key": "Accept",
+            "value": "*/*"
+          },
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          },
+          {
+            "key": "Postman-Token",
+            "value": "c3a7a00b-cfae-48cf-8325-3670fe30f07c"
+          },
+          {
+            "key": "Host",
+            "value": "127.0.0.1:53014"
+          },
+          {
+            "key": "Accept-Encoding",
+            "value": "gzip, deflate, br"
+          },
+          {
+            "key": "Connection",
+            "value": "keep-alive"
+          },
+          {
+            "key": "Content-Length",
+            "value": "54"
+          }
+        ],
+        "hasBody": true,
+        "body": {
+          "phone": "[REDACTED]",
+          "actorType": "customer"
+        }
+      },
+      "response": {
+        "status": "Created",
+        "code": 201,
+        "responseTimeMs": 7,
+        "responseSizeBytes": 188,
+        "headers": [
+          {
+            "key": "access-control-allow-origin",
+            "value": "http://localhost:3000"
+          },
+          {
+            "key": "content-type",
+            "value": "application/json; charset=utf-8"
+          },
+          {
+            "key": "content-length",
+            "value": "188"
+          },
+          {
+            "key": "Date",
+            "value": "Thu, 13 Aug 2026 10:11:39 GMT"
+          },
+          {
+            "key": "Connection",
+            "value": "keep-alive"
+          },
+          {
+            "key": "Keep-Alive",
+            "value": "timeout=72"
+          }
+        ],
+        "body": {
+          "success": true,
+          "statusCode": 201,
+          "message": "Success",
+          "data": {
+            "providerRef": "[REDACTED]"
+          },
+          "timestamp": "2026-08-13T10:11:39.668Z",
+          "path": "/api/v1/auth/otp/request"
+        }
+      },
+      "assertions": [
+        {
+          "name": "HTTP status matches the documented expectation",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Response uses the Homingo envelope",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Success data is populated and error data is null",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Lockout reference exists",
+          "passed": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "sequence": 36,
+      "name": "31.1 - Incorrect OTP lockout attempt 1",
+      "request": {
+        "method": "POST",
+        "url": "",
+        "headers": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "User-Agent",
+            "value": "PostmanRuntime/7.39.1"
+          },
+          {
+            "key": "Accept",
+            "value": "*/*"
+          },
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          },
+          {
+            "key": "Postman-Token",
+            "value": "f026ee8a-8d56-4c85-bf1d-b3dc28c0370a"
+          },
+          {
+            "key": "Host",
+            "value": "127.0.0.1:53014"
+          },
+          {
+            "key": "Accept-Encoding",
+            "value": "gzip, deflate, br"
+          },
+          {
+            "key": "Connection",
+            "value": "keep-alive"
+          },
+          {
+            "key": "Content-Length",
+            "value": "131"
+          }
+        ],
+        "hasBody": true,
+        "body": {
+          "phone": "[REDACTED]",
+          "code": "[REDACTED]",
+          "providerRef": "[REDACTED]",
+          "actorType": "customer"
+        }
+      },
+      "response": {
+        "status": "Unauthorized",
+        "code": 401,
+        "responseTimeMs": 10,
+        "responseSizeBytes": 168,
+        "headers": [
+          {
+            "key": "access-control-allow-origin",
+            "value": "http://localhost:3000"
+          },
+          {
+            "key": "content-type",
+            "value": "application/json; charset=utf-8"
+          },
+          {
+            "key": "content-length",
+            "value": "168"
+          },
+          {
+            "key": "Date",
+            "value": "Thu, 13 Aug 2026 10:11:39 GMT"
+          },
+          {
+            "key": "Connection",
+            "value": "keep-alive"
+          },
+          {
+            "key": "Keep-Alive",
+            "value": "timeout=72"
+          }
+        ],
+        "body": {
+          "success": false,
+          "statusCode": 401,
+          "message": "Invalid or expired code",
+          "data": null,
+          "errors": null,
+          "timestamp": "2026-08-13T10:11:39.766Z",
+          "path": "/api/v1/auth/otp/verify"
+        }
+      },
+      "assertions": [
+        {
+          "name": "HTTP status matches the documented expectation",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Response uses the Homingo envelope",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Success data is populated and error data is null",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Incorrect code returns no tokens",
+          "passed": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "sequence": 37,
+      "name": "31.2 - Incorrect OTP lockout attempt 2",
+      "request": {
+        "method": "POST",
+        "url": "",
+        "headers": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "User-Agent",
+            "value": "PostmanRuntime/7.39.1"
+          },
+          {
+            "key": "Accept",
+            "value": "*/*"
+          },
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          },
+          {
+            "key": "Postman-Token",
+            "value": "226055dd-0b59-4cb9-bedd-0f8a22126950"
+          },
+          {
+            "key": "Host",
+            "value": "127.0.0.1:53014"
+          },
+          {
+            "key": "Accept-Encoding",
+            "value": "gzip, deflate, br"
+          },
+          {
+            "key": "Connection",
+            "value": "keep-alive"
+          },
+          {
+            "key": "Content-Length",
+            "value": "131"
+          }
+        ],
+        "hasBody": true,
+        "body": {
+          "phone": "[REDACTED]",
+          "code": "[REDACTED]",
+          "providerRef": "[REDACTED]",
+          "actorType": "customer"
+        }
+      },
+      "response": {
+        "status": "Unauthorized",
+        "code": 401,
+        "responseTimeMs": 13,
+        "responseSizeBytes": 168,
+        "headers": [
+          {
+            "key": "access-control-allow-origin",
+            "value": "http://localhost:3000"
+          },
+          {
+            "key": "content-type",
+            "value": "application/json; charset=utf-8"
+          },
+          {
+            "key": "content-length",
+            "value": "168"
+          },
+          {
+            "key": "Date",
+            "value": "Thu, 13 Aug 2026 10:11:39 GMT"
+          },
+          {
+            "key": "Connection",
+            "value": "keep-alive"
+          },
+          {
+            "key": "Keep-Alive",
+            "value": "timeout=72"
+          }
+        ],
+        "body": {
+          "success": false,
+          "statusCode": 401,
+          "message": "Invalid or expired code",
+          "data": null,
+          "errors": null,
+          "timestamp": "2026-08-13T10:11:39.880Z",
+          "path": "/api/v1/auth/otp/verify"
+        }
+      },
+      "assertions": [
+        {
+          "name": "HTTP status matches the documented expectation",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Response uses the Homingo envelope",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Success data is populated and error data is null",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Incorrect code returns no tokens",
+          "passed": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "sequence": 38,
+      "name": "31.3 - Incorrect OTP lockout attempt 3",
+      "request": {
+        "method": "POST",
+        "url": "",
+        "headers": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "User-Agent",
+            "value": "PostmanRuntime/7.39.1"
+          },
+          {
+            "key": "Accept",
+            "value": "*/*"
+          },
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          },
+          {
+            "key": "Postman-Token",
+            "value": "f0f064e9-dc52-4667-99cb-77bb200b1744"
+          },
+          {
+            "key": "Host",
+            "value": "127.0.0.1:53014"
+          },
+          {
+            "key": "Accept-Encoding",
+            "value": "gzip, deflate, br"
+          },
+          {
+            "key": "Connection",
+            "value": "keep-alive"
+          },
+          {
+            "key": "Content-Length",
+            "value": "131"
+          }
+        ],
+        "hasBody": true,
+        "body": {
+          "phone": "[REDACTED]",
+          "code": "[REDACTED]",
+          "providerRef": "[REDACTED]",
+          "actorType": "customer"
+        }
+      },
+      "response": {
+        "status": "Unauthorized",
+        "code": 401,
+        "responseTimeMs": 9,
+        "responseSizeBytes": 168,
+        "headers": [
+          {
+            "key": "access-control-allow-origin",
+            "value": "http://localhost:3000"
+          },
+          {
+            "key": "content-type",
+            "value": "application/json; charset=utf-8"
+          },
+          {
+            "key": "content-length",
+            "value": "168"
+          },
+          {
+            "key": "Date",
+            "value": "Thu, 13 Aug 2026 10:11:39 GMT"
+          },
+          {
+            "key": "Connection",
+            "value": "keep-alive"
+          },
+          {
+            "key": "Keep-Alive",
+            "value": "timeout=72"
+          }
+        ],
+        "body": {
+          "success": false,
+          "statusCode": 401,
+          "message": "Invalid or expired code",
+          "data": null,
+          "errors": null,
+          "timestamp": "2026-08-13T10:11:39.985Z",
+          "path": "/api/v1/auth/otp/verify"
+        }
+      },
+      "assertions": [
+        {
+          "name": "HTTP status matches the documented expectation",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Response uses the Homingo envelope",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Success data is populated and error data is null",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Incorrect code returns no tokens",
+          "passed": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "sequence": 39,
+      "name": "31.4 - Incorrect OTP lockout attempt 4",
+      "request": {
+        "method": "POST",
+        "url": "",
+        "headers": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "User-Agent",
+            "value": "PostmanRuntime/7.39.1"
+          },
+          {
+            "key": "Accept",
+            "value": "*/*"
+          },
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          },
+          {
+            "key": "Postman-Token",
+            "value": "1cdbe9a9-fffd-4d1e-a9ca-cd5ea9f5e599"
+          },
+          {
+            "key": "Host",
+            "value": "127.0.0.1:53014"
+          },
+          {
+            "key": "Accept-Encoding",
+            "value": "gzip, deflate, br"
+          },
+          {
+            "key": "Connection",
+            "value": "keep-alive"
+          },
+          {
+            "key": "Content-Length",
+            "value": "131"
+          }
+        ],
+        "hasBody": true,
+        "body": {
+          "phone": "[REDACTED]",
+          "code": "[REDACTED]",
+          "providerRef": "[REDACTED]",
+          "actorType": "customer"
+        }
+      },
+      "response": {
+        "status": "Unauthorized",
+        "code": 401,
+        "responseTimeMs": 10,
+        "responseSizeBytes": 168,
+        "headers": [
+          {
+            "key": "access-control-allow-origin",
+            "value": "http://localhost:3000"
+          },
+          {
+            "key": "content-type",
+            "value": "application/json; charset=utf-8"
+          },
+          {
+            "key": "content-length",
+            "value": "168"
+          },
+          {
+            "key": "Date",
+            "value": "Thu, 13 Aug 2026 10:11:40 GMT"
+          },
+          {
+            "key": "Connection",
+            "value": "keep-alive"
+          },
+          {
+            "key": "Keep-Alive",
+            "value": "timeout=72"
+          }
+        ],
+        "body": {
+          "success": false,
+          "statusCode": 401,
+          "message": "Invalid or expired code",
+          "data": null,
+          "errors": null,
+          "timestamp": "2026-08-13T10:11:40.097Z",
+          "path": "/api/v1/auth/otp/verify"
+        }
+      },
+      "assertions": [
+        {
+          "name": "HTTP status matches the documented expectation",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Response uses the Homingo envelope",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Success data is populated and error data is null",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Incorrect code returns no tokens",
+          "passed": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "sequence": 40,
+      "name": "31.5 - Incorrect OTP lockout attempt 5",
+      "request": {
+        "method": "POST",
+        "url": "",
+        "headers": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "User-Agent",
+            "value": "PostmanRuntime/7.39.1"
+          },
+          {
+            "key": "Accept",
+            "value": "*/*"
+          },
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          },
+          {
+            "key": "Postman-Token",
+            "value": "189eb182-b327-4131-a65b-bad7d81400e8"
+          },
+          {
+            "key": "Host",
+            "value": "127.0.0.1:53014"
+          },
+          {
+            "key": "Accept-Encoding",
+            "value": "gzip, deflate, br"
+          },
+          {
+            "key": "Connection",
+            "value": "keep-alive"
+          },
+          {
+            "key": "Content-Length",
+            "value": "131"
+          }
+        ],
+        "hasBody": true,
+        "body": {
+          "phone": "[REDACTED]",
+          "code": "[REDACTED]",
+          "providerRef": "[REDACTED]",
+          "actorType": "customer"
+        }
+      },
+      "response": {
+        "status": "Unauthorized",
+        "code": 401,
+        "responseTimeMs": 6,
+        "responseSizeBytes": 168,
+        "headers": [
+          {
+            "key": "access-control-allow-origin",
+            "value": "http://localhost:3000"
+          },
+          {
+            "key": "content-type",
+            "value": "application/json; charset=utf-8"
+          },
+          {
+            "key": "content-length",
+            "value": "168"
+          },
+          {
+            "key": "Date",
+            "value": "Thu, 13 Aug 2026 10:11:40 GMT"
+          },
+          {
+            "key": "Connection",
+            "value": "keep-alive"
+          },
+          {
+            "key": "Keep-Alive",
+            "value": "timeout=72"
+          }
+        ],
+        "body": {
+          "success": false,
+          "statusCode": 401,
+          "message": "Invalid or expired code",
+          "data": null,
+          "errors": null,
+          "timestamp": "2026-08-13T10:11:40.203Z",
+          "path": "/api/v1/auth/otp/verify"
+        }
+      },
+      "assertions": [
+        {
+          "name": "HTTP status matches the documented expectation",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Response uses the Homingo envelope",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Success data is populated and error data is null",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Incorrect code returns no tokens",
+          "passed": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "sequence": 41,
+      "name": "31.6 - Incorrect OTP lockout attempt 6",
+      "request": {
+        "method": "POST",
+        "url": "",
+        "headers": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "User-Agent",
+            "value": "PostmanRuntime/7.39.1"
+          },
+          {
+            "key": "Accept",
+            "value": "*/*"
+          },
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          },
+          {
+            "key": "Postman-Token",
+            "value": "3e1daf5f-2257-4fe1-9363-fc51c307d4f4"
+          },
+          {
+            "key": "Host",
+            "value": "127.0.0.1:53014"
+          },
+          {
+            "key": "Accept-Encoding",
+            "value": "gzip, deflate, br"
+          },
+          {
+            "key": "Connection",
+            "value": "keep-alive"
+          },
+          {
+            "key": "Content-Length",
+            "value": "131"
+          }
+        ],
+        "hasBody": true,
+        "body": {
+          "phone": "[REDACTED]",
+          "code": "[REDACTED]",
+          "providerRef": "[REDACTED]",
+          "actorType": "customer"
+        }
+      },
+      "response": {
+        "status": "Too Many Requests",
+        "code": 429,
+        "responseTimeMs": 14,
+        "responseSizeBytes": 195,
+        "headers": [
+          {
+            "key": "access-control-allow-origin",
+            "value": "http://localhost:3000"
+          },
+          {
+            "key": "content-type",
+            "value": "application/json; charset=utf-8"
+          },
+          {
+            "key": "content-length",
+            "value": "195"
+          },
+          {
+            "key": "Date",
+            "value": "Thu, 13 Aug 2026 10:11:40 GMT"
+          },
+          {
+            "key": "Connection",
+            "value": "keep-alive"
+          },
+          {
+            "key": "Keep-Alive",
+            "value": "timeout=72"
+          }
+        ],
+        "body": {
+          "success": false,
+          "statusCode": 429,
+          "message": "Too many incorrect codes - request a new OTP later",
+          "data": null,
+          "errors": null,
+          "timestamp": "2026-08-13T10:11:40.304Z",
+          "path": "/api/v1/auth/otp/verify"
+        }
+      },
+      "assertions": [
+        {
+          "name": "HTTP status matches the documented expectation",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Response uses the Homingo envelope",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Success data is populated and error data is null",
+          "passed": true,
+          "error": null
+        },
+        {
+          "name": "Verification lockout is explicit",
+          "passed": true,
+          "error": null
+        }
+      ]
+    }
+  ]
+}

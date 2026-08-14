@@ -210,6 +210,19 @@ describe('BookingLifecycleService', () => {
   });
 
   describe('force-start — the documented override', () => {
+    it('returns the booking lookup failure before writing an audit event', async () => {
+      const deps = buildDeps();
+      deps.bookings.getByIdOrFail.mockRejectedValue(
+        new HttpException('Booking not found', HttpStatus.NOT_FOUND),
+      );
+      const service = buildService(deps);
+
+      await expect(
+        service.forceStart('missing-booking', 'admin-1', 'Building security'),
+      ).rejects.toMatchObject({ status: HttpStatus.NOT_FOUND });
+      expect(deps.state.recordEvent).not.toHaveBeenCalled();
+    });
+
     it('records a distinct bypass event before the transition', async () => {
       const deps = buildDeps();
       const service = buildService(deps);

@@ -42,30 +42,15 @@ export class AdminUsersService {
       );
     }
 
-    // Firebase is provisioned first since it isn't part of the Postgres
-    // transaction below — on a DB failure the created Firebase user is
-    // deleted so we never leak an identity with no matching AdminUser row.
-    const firebaseUser = await this.firebase.createUser({
-      email: dto.email,
-      password: dto.password,
-      displayName: dto.fullName,
+    return this.prisma.adminUser.create({
+      data: {
+        phone: dto.phone,
+        fullName: dto.fullName,
+        email: dto.email,
+        roleId: dto.roleId,
+        cityScopeJson: dto.cityScopeJson ?? [],
+      },
     });
-
-    try {
-      return await this.prisma.adminUser.create({
-        data: {
-          phone: dto.phone,
-          fullName: dto.fullName,
-          email: dto.email,
-          firebaseUid: firebaseUser.uid,
-          roleId: dto.roleId,
-          cityScopeJson: dto.cityScopeJson ?? [],
-        },
-      });
-    } catch (error) {
-      await this.firebase.deleteUser(firebaseUser.uid);
-      throw error;
-    }
   }
 
   async update(id: string, dto: UpdateAdminUserDto): Promise<AdminUser> {
@@ -93,11 +78,12 @@ export class AdminUsersService {
 
     if (dto.isActive === false) {
       await this.tokenService.revokeAllSessions('admin', id);
-      // Closes the login path at the identity layer too, not just the
-      // session layer — a deactivated admin can't get a new Firebase ID
-      // token to trade in, not just "their existing sessions are dead."
-      await this.firebase.setDisabled(admin.firebaseUid, true);
-    } else if (dto.isActive === true) {
+      // Keep a legacy Firebase-linked identity in sync. OTP-only Admins have
+      // no Firebase uid; isActive is enforced during OTP verification.
+      if (admin.firebaseUid) {
+        await this.firebase.setDisabled(admin.firebaseUid, true);
+      }
+    } else if (dto.isActive === true && admin.firebaseUid) {
       await this.firebase.setDisabled(admin.firebaseUid, false);
     }
 

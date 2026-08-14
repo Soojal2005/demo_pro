@@ -227,9 +227,22 @@ describe('disburse', () => {
   it('answers honestly when RazorpayX is not configured', async () => {
     const deps = buildDeps();
     deps.razorpayx.isConfigured = false;
+    deps.prisma.commissionPayout.findUnique.mockResolvedValue(
+      anApprovedPayout(),
+    );
 
     expect(await statusOf(build(deps).disburse('payout-1', 'admin-1'))).toBe(
       HttpStatus.NOT_IMPLEMENTED,
+    );
+  });
+
+  it('returns not found before checking deployment gateway configuration', async () => {
+    const deps = buildDeps();
+    deps.razorpayx.isConfigured = false;
+    deps.prisma.commissionPayout.findUnique.mockResolvedValue(null);
+
+    expect(await statusOf(build(deps).disburse('missing', 'admin-1'))).toBe(
+      HttpStatus.NOT_FOUND,
     );
   });
 

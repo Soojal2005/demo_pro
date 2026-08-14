@@ -122,12 +122,8 @@ export class AuthService {
   }
 
   /**
-   * The only admin login path. Firebase proves identity (password or
-   * Google, both produce the same firebaseUid for a given person once
-   * linked by email — Firebase's documented default). AdminUser is what
-   * decides authorization: no matching row = no access, however Firebase
-   * verified them. Mirrors the "never self-registered" rule from
-   * docs/user-stories-by-persona/admin.md.
+   * Legacy compatibility for Admins already linked to Firebase. New Admin
+   * authentication uses the common phone OTP request/verify endpoints.
    */
   async loginWithFirebase(dto: FirebaseLoginDto): Promise<TokenPair> {
     const decoded = await this.firebase.verifyIdToken(dto.idToken);
@@ -159,7 +155,40 @@ export class AuthService {
 
   private async resolveActor(dto: VerifyOtpDto): Promise<AuthenticatedUser> {
     if (dto.actorType === 'customer') return this.resolveCustomer(dto);
-    return this.resolvePro(dto.phone);
+    if (dto.actorType === 'pro') return this.resolvePro(dto.phone);
+    return this.resolveAdmin(dto.phone);
+  }
+
+  /** OTP proves phone ownership; the existing AWS AdminUser grants access. */
+  private async resolveAdmin(phone: string): Promise<AuthenticatedUser> {
+    let admin = await this.prisma.adminUser.findUnique({ where: { phone } });
+    // Existing AWS seeds may contain a pre-E.164 10-digit Indian number.
+    // Exact E.164 always wins, avoiding ambiguity where both forms exist.
+    if (!admin && /^\+91\d{10}$/.test(phone)) {
+      admin = await this.prisma.adminUser.findUnique({
+        where: { phone: phone.slice(3) },
+      });
+    }
+    if (!admin) {
+      throw new UnauthorizedException(
+        'No admin account is linked to this phone number',
+      );
+    }
+    if (!admin.isActive) {
+      throw new UnauthorizedException('Admin account is deactivated');
+    }
+
+    await this.prisma.adminUser.update({
+      where: { id: admin.id },
+      data: { lastLoginAt: new Date() },
+    });
+
+    return {
+      id: admin.id,
+      actorType: 'admin',
+      roleId: admin.roleId,
+      cityScope: (admin.cityScopeJson as string[]) ?? [],
+    };
   }
 
   private async resolveCustomer(dto: VerifyOtpDto): Promise<AuthenticatedUser> {

@@ -12,6 +12,7 @@ import { ProsModule } from '../pros/pros.module';
 import { AdminDispatchController } from './admin-dispatch.controller';
 import { DispatchScoringService } from './dispatch-scoring.service';
 import { DispatchService } from './dispatch.service';
+import { DispatchWorkerService } from './dispatch-worker.service';
 import { ProDispatchController } from './pro-dispatch.controller';
 import { RealDispatchAdapter } from './real-dispatch.adapter';
 import {
@@ -53,6 +54,7 @@ import {
   providers: [
     DispatchService,
     DispatchScoringService,
+    DispatchWorkerService,
     RealDispatchAdapter,
     { provide: TRAVEL_TIME_PORT, useClass: RoutedTravelTimeService },
   ],

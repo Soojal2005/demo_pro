@@ -239,6 +239,10 @@ export class BookingLifecycleService {
     adminId: string,
     reason: string,
   ): Promise<Booking> {
+    // Resolve first so a missing id is the documented 404, rather than a
+    // booking-status-event foreign-key failure leaking out as HTTP 500.
+    await this.bookings.getByIdOrFail(bookingId);
+
     await this.state.recordEvent(
       bookingId,
       'start_otp_bypassed',

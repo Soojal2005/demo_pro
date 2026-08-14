@@ -41,7 +41,7 @@ export class AdminUsersController {
 
   @Post()
   @RequirePermissions(PermissionCode.ADMIN_USER_MANAGE)
-  @ApiOperation({ summary: 'Provision a new admin user' })
+  @ApiOperation({ summary: 'Provision a phone-OTP admin user' })
   @ApiOkEnvelope(AdminUserDto)
   @ApiErrorEnvelope(
     HttpStatus.FORBIDDEN,

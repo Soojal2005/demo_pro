@@ -4,9 +4,7 @@ import { IsIn, IsOptional, IsString, Matches } from 'class-validator';
 import type { ActorType } from '../../../common/types/authenticated-user.type';
 import { normalizePhone } from './phone.transform';
 
-/** Admin login is Firebase-only (POST auth/admin/firebase-login) — OTP never applies to it. */
-type OtpActorType = Exclude<ActorType, 'admin'>;
-const ACTOR_TYPES: OtpActorType[] = ['customer', 'pro'];
+const ACTOR_TYPES: ActorType[] = ['customer', 'pro', 'admin'];
 
 export class VerifyOtpDto {
   @ApiProperty({
@@ -30,7 +28,7 @@ export class VerifyOtpDto {
 
   @ApiProperty({ enum: ACTOR_TYPES })
   @IsIn(ACTOR_TYPES)
-  actorType: OtpActorType;
+  actorType: ActorType;
 
   @ApiPropertyOptional({
     description:

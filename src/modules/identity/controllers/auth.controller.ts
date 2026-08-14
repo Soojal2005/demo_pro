@@ -40,7 +40,9 @@ export class AuthController {
   }
 
   @Post('otp/request')
-  @ApiOperation({ summary: 'Send an OTP to a phone number' })
+  @ApiOperation({
+    summary: 'Send a Slide OTP to a Customer, Pro, or existing Admin phone',
+  })
   @ApiOkEnvelope(OtpRequestResponseDto)
   @ApiErrorEnvelope(
     HttpStatus.BAD_REQUEST,
@@ -54,7 +56,9 @@ export class AuthController {
   }
 
   @Post('otp/verify')
-  @ApiOperation({ summary: 'Verify an OTP and receive a token pair' })
+  @ApiOperation({
+    summary: 'Verify a Slide OTP and receive an actor-scoped token pair',
+  })
   @ApiOkEnvelope(TokenPairDto)
   @ApiErrorEnvelope(
     HttpStatus.BAD_REQUEST,
@@ -68,8 +72,7 @@ export class AuthController {
 
   @Post('admin/firebase-login')
   @ApiOperation({
-    summary:
-      'Log in as an admin via Firebase (password or Google sign-in on the client)',
+    summary: 'Legacy Firebase login for already-linked admin accounts',
   })
   @ApiOkEnvelope(TokenPairDto)
   @ApiErrorEnvelope(HttpStatus.UNAUTHORIZED)

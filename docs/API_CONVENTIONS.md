@@ -24,7 +24,7 @@ Every response — success or failure, every endpoint, no exceptions — is:
 }
 ```
 
-On a failure `data` is `null` and `errors` carries the detail:
+On a failure `data` is `errors` carries the detail:
 
 ```json
 {

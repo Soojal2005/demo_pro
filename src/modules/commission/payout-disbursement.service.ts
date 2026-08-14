@@ -46,6 +46,12 @@ export class PayoutDisbursementService {
    * matches nothing and it stops there, having submitted nothing.
    */
   async disburse(payoutId: string, adminId: string): Promise<CommissionPayout> {
+    const payout = await this.prisma.commissionPayout.findUnique({
+      where: { id: payoutId },
+      include: { pro: true, bankAccount: true },
+    });
+    if (!payout) throw apiError('Payout not found', HttpStatus.NOT_FOUND);
+
     if (!this.razorpayx.isConfigured) {
       throw apiError(
         'Payouts are not available on this deployment',
@@ -60,12 +66,6 @@ export class PayoutDisbursementService {
         ],
       );
     }
-
-    const payout = await this.prisma.commissionPayout.findUnique({
-      where: { id: payoutId },
-      include: { pro: true, bankAccount: true },
-    });
-    if (!payout) throw apiError('Payout not found', HttpStatus.NOT_FOUND);
 
     if (payout.status !== 'approved') {
       throw apiError(
