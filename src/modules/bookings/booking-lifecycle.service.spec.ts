@@ -35,10 +35,6 @@ function buildDeps() {
       ),
   };
   const config = { get: jest.fn() };
-  const otp = {
-    sendOtp: jest.fn().mockResolvedValue({ providerRef: 'ref-1' }),
-    verifyOtp: jest.fn(),
-  };
   // Module 8's completion hook. Resolved by default so the lifecycle tests
   // stay about the lifecycle; the one case that matters here — a failing
   // commission must not fail the completion — has its own test.
@@ -54,7 +50,6 @@ function buildDeps() {
     s3,
     settings,
     config,
-    otp,
     commission,
   };
 }
@@ -71,7 +66,6 @@ function buildService(
     deps.s3 as never,
     deps.settings as never,
     deps.config as never,
-    deps.otp,
     deps.commission,
   );
 }
@@ -92,41 +86,71 @@ const arrivedBooking = {
   status: 'arrived',
   arrivedAt: new Date('2026-08-10T09:00:00Z'),
   startedAt: null,
-  startOtpProviderRef: 'ref-1',
+  startOtpCode: '481920',
   startOtpAttempts: 0,
   flatPrice: { toString: () => '599.00' },
 };
 
 describe('BookingLifecycleService', () => {
   describe('the start OTP — the trust anchor', () => {
-    it('sends the code to the CUSTOMER, not the Pro', async () => {
+    /** The code written by whichever `booking.update` call issued one. */
+    const issuedCode = (deps: ReturnType<typeof buildDeps>): string => {
+      const call = deps.prisma.booking.update.mock.calls.find(
+        ([arg]: [{ data?: { startOtpCode?: string } }]) =>
+          typeof arg?.data?.startOtpCode === 'string',
+      ) as [{ data: { startOtpCode: string } }] | undefined;
+
+      expect(call).toBeDefined();
+      return call![0].data.startOtpCode;
+    };
+
+    /*
+     * The whole point of the change: the code is ours. It used to be sent by
+     * the login SMS provider, which meant it never reached this database, the
+     * app could not show it, and a customer with no number on file could not
+     * start their job at all.
+     */
+    it('mints the code itself and stores it on the booking', async () => {
       const deps = buildDeps();
       deps.bookings.getAssignedBooking.mockResolvedValue({
         ...arrivedBooking,
         status: 'en_route',
         arrivedAt: null,
       });
-      deps.state.transition.mockResolvedValue({
-        ...arrivedBooking,
-        customerId: 'cust-1',
-      });
+      deps.state.transition.mockResolvedValue(arrivedBooking);
       const service = buildService(deps);
 
       await service.markArrived('pro-1', 'booking-1', {});
 
-      expect(deps.customers.getById).toHaveBeenCalledWith('cust-1');
-      expect(deps.otp.sendOtp).toHaveBeenCalledWith('+919876543210');
+      expect(issuedCode(deps)).toMatch(/^\d{6}$/);
     });
 
-    it('does not set startedAt when the provider rejects the code', async () => {
+    it('issues one to a customer who has no phone number at all', async () => {
+      const deps = buildDeps();
+      deps.customers.getById.mockResolvedValue({ id: 'cust-1', phone: null });
+      deps.bookings.getAssignedBooking.mockResolvedValue({
+        ...arrivedBooking,
+        status: 'en_route',
+        arrivedAt: null,
+      });
+      deps.state.transition.mockResolvedValue(arrivedBooking);
+      const service = buildService(deps);
+
+      await service.markArrived('pro-1', 'booking-1', {});
+
+      expect(issuedCode(deps)).toMatch(/^\d{6}$/);
+    });
+
+    it('does not set startedAt when the code is wrong', async () => {
       const deps = buildDeps();
       deps.bookings.getAssignedBooking.mockResolvedValue(arrivedBooking);
-      deps.otp.verifyOtp.mockResolvedValue(false);
       deps.prisma.booking.update.mockResolvedValue({ startOtpAttempts: 1 });
       const service = buildService(deps);
 
       await expect(
-        captureStatus(service.verifyStartOtp('pro-1', 'booking-1', '0000', {})),
+        captureStatus(
+          service.verifyStartOtp('pro-1', 'booking-1', '000000', {}),
+        ),
       ).resolves.toBe(HttpStatus.BAD_REQUEST);
 
       expect(deps.state.transition).not.toHaveBeenCalled();
@@ -135,12 +159,11 @@ describe('BookingLifecycleService', () => {
     it('counts the failed attempt', async () => {
       const deps = buildDeps();
       deps.bookings.getAssignedBooking.mockResolvedValue(arrivedBooking);
-      deps.otp.verifyOtp.mockResolvedValue(false);
       deps.prisma.booking.update.mockResolvedValue({ startOtpAttempts: 1 });
       const service = buildService(deps);
 
       await captureStatus(
-        service.verifyStartOtp('pro-1', 'booking-1', '0000', {}),
+        service.verifyStartOtp('pro-1', 'booking-1', '000000', {}),
       );
 
       expect(deps.prisma.booking.update).toHaveBeenCalledWith({
@@ -149,19 +172,41 @@ describe('BookingLifecycleService', () => {
       });
     });
 
-    it('sets startedAt only on the provider’s answer', async () => {
+    it('starts the job on the right code, and spends it', async () => {
       const deps = buildDeps();
       deps.bookings.getAssignedBooking.mockResolvedValue(arrivedBooking);
-      deps.otp.verifyOtp.mockResolvedValue(true);
       const service = buildService(deps);
 
-      await service.verifyStartOtp('pro-1', 'booking-1', '1234', {});
+      await service.verifyStartOtp('pro-1', 'booking-1', '481920', {});
 
       const [[call]] = deps.state.transition.mock.calls as [
-        [{ to: string; data: { startedAt: Date } }],
+        [{ to: string; data: { startedAt: Date; startOtpCode: null } }],
       ];
       expect(call.to).toBe('started');
       expect(call.data.startedAt).toBeInstanceOf(Date);
+      // A started job must stop carrying a live code.
+      expect(call.data.startOtpCode).toBeNull();
+    });
+
+    /*
+     * The cap used to be read only AFTER a comparison, so it changed the
+     * message but never refused the guess — a caller could keep trying
+     * indefinitely against a six-digit code.
+     */
+    it('refuses to look at another code once the attempts are spent', async () => {
+      const deps = buildDeps();
+      deps.bookings.getAssignedBooking.mockResolvedValue({
+        ...arrivedBooking,
+        startOtpAttempts: 5,
+      });
+      const service = buildService(deps);
+
+      await expect(
+        captureStatus(
+          service.verifyStartOtp('pro-1', 'booking-1', '481920', {}),
+        ),
+      ).resolves.toBe(HttpStatus.TOO_MANY_REQUESTS);
+      expect(deps.state.transition).not.toHaveBeenCalled();
     });
 
     it('refuses before the Pro has marked arrival', async () => {
@@ -173,9 +218,45 @@ describe('BookingLifecycleService', () => {
       const service = buildService(deps);
 
       await expect(
-        captureStatus(service.verifyStartOtp('pro-1', 'booking-1', '1234', {})),
+        captureStatus(
+          service.verifyStartOtp('pro-1', 'booking-1', '481920', {}),
+        ),
       ).resolves.toBe(HttpStatus.CONFLICT);
-      expect(deps.otp.verifyOtp).not.toHaveBeenCalled();
+      expect(deps.state.transition).not.toHaveBeenCalled();
+    });
+
+    it('refuses when no code has been issued', async () => {
+      const deps = buildDeps();
+      deps.bookings.getAssignedBooking.mockResolvedValue({
+        ...arrivedBooking,
+        startOtpCode: null,
+      });
+      const service = buildService(deps);
+
+      await expect(
+        captureStatus(
+          service.verifyStartOtp('pro-1', 'booking-1', '481920', {}),
+        ),
+      ).resolves.toBe(HttpStatus.CONFLICT);
+    });
+
+    /* Asking for a resend means the first one is unusable — the same digits
+       back would solve nothing, and the old allowance is already spent. */
+    it('replaces the code and clears the attempts on a resend', async () => {
+      const deps = buildDeps();
+      deps.bookings.getByIdOrFail.mockResolvedValue({
+        ...arrivedBooking,
+        startOtpAttempts: 4,
+      });
+      const service = buildService(deps);
+
+      await service.resendStartOtp('booking-1');
+
+      const [[call]] = deps.prisma.booking.update.mock.calls as [
+        [{ data: { startOtpCode: string; startOtpAttempts: number } }],
+      ];
+      expect(call.data.startOtpCode).toMatch(/^\d{6}$/);
+      expect(call.data.startOtpAttempts).toBe(0);
     });
 
     it('does not restart the grace clock when a Pro returns', async () => {
@@ -191,21 +272,6 @@ describe('BookingLifecycleService', () => {
         [{ data: Record<string, unknown> }],
       ];
       expect(call.data).not.toHaveProperty('arrivedAt');
-    });
-
-    it('survives an OTP dispatch failure — the Pro really is at the door', async () => {
-      const deps = buildDeps();
-      deps.bookings.getAssignedBooking.mockResolvedValue({
-        ...arrivedBooking,
-        arrivedAt: null,
-      });
-      deps.state.transition.mockResolvedValue(arrivedBooking);
-      deps.otp.sendOtp.mockRejectedValue(new Error('provider down'));
-      const service = buildService(deps);
-
-      await expect(
-        service.markArrived('pro-1', 'booking-1', {}),
-      ).resolves.toBeDefined();
     });
   });
 

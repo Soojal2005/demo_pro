@@ -1,4 +1,9 @@
-import { HttpStatus, Inject, Injectable } from '@nestjs/common';
+import {
+  HttpStatus,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { apiError } from '../../common/utils';
 import type { Booking, Prisma } from '../../prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -6,7 +11,17 @@ import { ServiceCatalogService } from '../catalog/service-catalog.service';
 import { CustomersService } from '../customers/customers.service';
 import type { BookingStatus, PaymentMode } from './booking.types';
 import { BookingStateService } from './booking-state.service';
+import {
+  CUSTOMER_BOOKING_DETAIL_INCLUDE,
+  CUSTOMER_BOOKING_INCLUDE,
+  toCustomerBooking,
+  toCustomerBookingDetail,
+} from './customer-booking.view';
 import { CreateBookingDto } from './dto/create-booking.dto';
+import type {
+  CustomerBookingDetailDto,
+  CustomerBookingDto,
+} from './dto/customer-booking.dto';
 import { DISPATCH_PORT, type DispatchPort } from './ports/dispatch.port';
 import { PAYMENTS_PORT, type PaymentsPort } from './ports/payments.port';
 import {
@@ -234,6 +249,68 @@ export class BookingsService {
       where: { customerId, status: { in: LIVE_STATUSES } },
       orderBy: { slotStartAt: 'asc' },
     });
+  }
+
+  // ------------------------------------------------------------------
+  // Customer-facing reads
+  //
+  // Same rows, resolved into what a phone draws — see customer-booking.view.
+  // They live here rather than in a view service so the `where` clauses and
+  // LIVE_STATUSES have exactly one definition; a second copy is how a booking
+  // ends up live in one list and missing from the other.
+  // ------------------------------------------------------------------
+
+  async listViewForCustomer(customerId: string): Promise<CustomerBookingDto[]> {
+    const rows = await this.prisma.booking.findMany({
+      where: { customerId },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+      include: CUSTOMER_BOOKING_INCLUDE,
+    });
+    return rows.map(toCustomerBooking);
+  }
+
+  async listLiveViewForCustomer(
+    customerId: string,
+  ): Promise<CustomerBookingDto[]> {
+    const rows = await this.prisma.booking.findMany({
+      where: { customerId, status: { in: LIVE_STATUSES } },
+      orderBy: { slotStartAt: 'asc' },
+      include: CUSTOMER_BOOKING_INCLUDE,
+    });
+    return rows.map(toCustomerBooking);
+  }
+
+  /**
+   * One booking the caller owns, with its trail.
+   *
+   * Ownership is part of the `where` rather than checked after the read, so a
+   * booking belonging to somebody else is a 404 and not a 403 — which would
+   * confirm the id exists.
+   */
+  async getOwnedBookingDetailView(
+    customerId: string,
+    bookingId: string,
+  ): Promise<CustomerBookingDetailDto> {
+    const row = await this.prisma.booking.findFirst({
+      where: { id: bookingId, customerId },
+      include: CUSTOMER_BOOKING_DETAIL_INCLUDE,
+    });
+    if (!row) throw new NotFoundException('Booking not found');
+    return toCustomerBookingDetail(row);
+  }
+
+  /**
+   * A booking that was just written, in the shape the client reads.
+   *
+   * Create and cancel both need this: the row they have in hand came back
+   * without its relations, and the client cannot draw a card from ids.
+   */
+  async viewOf(
+    customerId: string,
+    bookingId: string,
+  ): Promise<CustomerBookingDetailDto> {
+    return this.getOwnedBookingDetailView(customerId, bookingId);
   }
 
   /** Backs the payment-hold expiry sweep — US-4.6. */

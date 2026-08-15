@@ -721,8 +721,23 @@ model Booking {
 
   arrivedAt DateTime?
 
-  /// The trust anchor. Only a provider-verified OTP (or an audited ops
+  /// The trust anchor. Only a verified start code (or an audited ops
   /// force-start) may set startedAt — never the app's own claim.
+  ///
+  /// MINTED HERE, not by the SMS provider. The customer and the Pro are both
+  /// signed in already, so this is a handshake between two authenticated
+  /// parties rather than proof of who owns a phone number — it does not need
+  /// to leave the system, and sending it by SMS made it impossible to show in
+  /// the app, cost a message per job, and locked out any customer whose phone
+  /// had no signal at the door or who had never attached a number at all.
+  ///
+  /// Readable by the owning customer only, and only while the booking is
+  /// `arrived`. Cleared the moment it is spent, so a started job stops
+  /// carrying a live code.
+  startOtpCode            String?
+  startOtpIssuedAt        DateTime?
+  /// Legacy. Slide's reference from when the start code was an SMS. Retained
+  /// so historical rows keep their audit trail; nothing writes it any more.
   startOtpProviderRef     String?
   startOtpAttempts        Int     @default(0)
   startOtpVerifiedByProId String? @db.Uuid
