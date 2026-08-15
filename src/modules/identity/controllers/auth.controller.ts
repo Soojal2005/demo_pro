@@ -1,8 +1,10 @@
 import {
   Body,
   Controller,
+  Get,
   HttpCode,
   HttpStatus,
+  Patch,
   Post,
   UseGuards,
 } from '@nestjs/common';
@@ -13,15 +15,21 @@ import {
   ApiOkEnvelope,
 } from '../../../common/swagger/api-envelope.decorator';
 import type { AuthenticatedUser } from '../../../common/types/authenticated-user.type';
+import { AuthAccountDto, AuthSessionDto } from '../dto/auth-session.dto';
 import { FirebaseLoginDto } from '../dto/firebase-login.dto';
 import { GuestSessionDto } from '../dto/guest-session.dto';
 import { OtpRequestResponseDto } from '../dto/otp-request-response.dto';
 import { RefreshTokenDto } from '../dto/refresh-token.dto';
 import { RequestOtpDto } from '../dto/request-otp.dto';
 import { TokenPairDto } from '../dto/token-pair.dto';
+import { UpdateProfileDto } from '../dto/update-profile.dto';
 import { VerifyOtpDto } from '../dto/verify-otp.dto';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
-import { AuthService } from '../services/auth.service';
+import {
+  AuthService,
+  type AuthAccount,
+  type AuthSession,
+} from '../services/auth.service';
 import { TokenPair } from '../services/token.service';
 
 @ApiTags('Auth')
@@ -57,17 +65,47 @@ export class AuthController {
 
   @Post('otp/verify')
   @ApiOperation({
-    summary: 'Verify a Slide OTP and receive an actor-scoped token pair',
+    summary:
+      'Verify a Slide OTP and receive an actor-scoped session — token pair plus the account behind it',
   })
-  @ApiOkEnvelope(TokenPairDto)
+  @ApiOkEnvelope(AuthSessionDto)
   @ApiErrorEnvelope(
     HttpStatus.BAD_REQUEST,
     HttpStatus.UNAUTHORIZED,
     HttpStatus.TOO_MANY_REQUESTS,
     HttpStatus.SERVICE_UNAVAILABLE,
   )
-  verifyOtp(@Body() dto: VerifyOtpDto): Promise<TokenPair> {
+  verifyOtp(@Body() dto: VerifyOtpDto): Promise<AuthSession> {
     return this.authService.verifyOtp(dto);
+  }
+
+  @Get('me')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'The account behind the presented access token' })
+  @ApiOkEnvelope(AuthAccountDto)
+  @ApiErrorEnvelope(HttpStatus.UNAUTHORIZED)
+  me(@CurrentUser() user: AuthenticatedUser): Promise<AuthAccount> {
+    return this.authService.me(user);
+  }
+
+  @Patch('me')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Edit the current account — omit a field to leave it unchanged',
+  })
+  @ApiOkEnvelope(AuthAccountDto)
+  @ApiErrorEnvelope(
+    HttpStatus.BAD_REQUEST,
+    HttpStatus.UNAUTHORIZED,
+    HttpStatus.FORBIDDEN,
+  )
+  updateProfile(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: UpdateProfileDto,
+  ): Promise<AuthAccount> {
+    return this.authService.updateProfile(user, dto);
   }
 
   @Post('admin/firebase-login')

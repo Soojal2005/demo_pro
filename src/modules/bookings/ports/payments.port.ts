@@ -11,10 +11,12 @@ export interface CreatedOrder {
  * What Booking needs from Payments (module 7), expressed as an interface
  * Booking owns.
  *
- * Module 7 does not exist. Because a **cash** booking has no `Order` row at
- * all and skips `awaiting_payment` entirely, the entire cash path runs today
- * without this port being implemented — which is what makes a real end-to-end
- * job demonstrable now.
+ * Module 7 exists and registers `RealPaymentsAdapter` into the delegate below
+ * — but only when Razorpay credentials are configured. With none set it
+ * registers nothing and online bookings get the honest 501 from
+ * `NoOpPaymentsService`. Because a **cash** booking has no `Order` row at all
+ * and skips `awaiting_payment` entirely, the whole cash path runs either way,
+ * which is what lets someone with no gateway keys work on the product.
  */
 export interface PaymentsPort {
   /**
@@ -45,7 +47,20 @@ export interface PaymentsPort {
 }
 
 /**
- * Stand-in until module 7 lands, and the delegate it registers into.
+ * Whether a real gateway is behind the port right now.
+ *
+ * This is the single source of truth for "can this deployment take an online
+ * payment", and it answers from what is actually wired rather than from an
+ * environment variable read a second time: module 7 registers its adapter only
+ * once Razorpay is fully configured, so anything that re-derived the answer
+ * from `RAZORPAY_*` could disagree with the code that has to serve the request.
+ */
+export const isGatewayRegistered = (port: PaymentsPort): boolean =>
+  port instanceof NoOpPaymentsService ? port.isGatewayRegistered : true;
+
+/**
+ * The fallback when module 7 registers nothing, and the delegate it registers
+ * into.
  *
  * `createOrder` **fails loudly** rather than returning a fake order id. An
  * online booking that appeared to have an order but did not would sit in

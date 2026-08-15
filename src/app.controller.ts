@@ -1,5 +1,6 @@
 import { Controller, Get } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { AppConfigDto } from './app-config.dto';
 import { ApiOkEnvelope } from './common/swagger/api-envelope.decorator';
 import { AppService } from './app.service';
 
@@ -13,5 +14,16 @@ export class AppController {
   @ApiOkEnvelope()
   getHello(): string {
     return this.appService.getHello();
+  }
+
+  /**
+   * Public on purpose — the app reads it at launch, before anyone signs in,
+   * and it exposes capabilities rather than configuration.
+   */
+  @Get('config')
+  @ApiOperation({ summary: 'What this deployment supports' })
+  @ApiOkEnvelope(AppConfigDto)
+  config(): AppConfigDto {
+    return this.appService.config();
   }
 }
