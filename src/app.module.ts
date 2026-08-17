@@ -19,6 +19,7 @@ import { ProsModule } from './modules/pros/pros.module';
 import { ReviewsModule } from './modules/reviews/reviews.module';
 import { TrainingModule } from './modules/training/training.module';
 import { AdminModule } from './modules/admin/admin.module';
+import { DashboardModule } from './modules/dashboard/dashboard.module';
 
 // NODE_ENV picks the override file; `.env` is always the fallback beneath it.
 // ConfigModule gives the FIRST file that defines a variable precedence, so the
@@ -62,6 +63,10 @@ const nodeEnv = process.env.NODE_ENV ?? 'local';
     // Module 15 is an aggregation layer over the domain modules above. It is
     // last so it reuses their tables and services instead of owning copies.
     AdminModule,
+    // The admin console's landing screen. Like AdminModule it owns no tables —
+    // it counts rows the modules above already store. Kept separate because it
+    // answers one screen's question, not a reporting need.
+    DashboardModule,
   ],
   controllers: [AppController],
   providers: [AppService],
