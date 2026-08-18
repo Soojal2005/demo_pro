@@ -417,21 +417,34 @@ export class ReconciliationRunnerService {
   }
 
   /** Everything still open, across every run. The actual work queue. */
-  openDiscrepancies(query: { page?: number; limit?: number; kind?: string }) {
+  async openDiscrepancies(query: {
+    page?: number;
+    limit?: number;
+    kind?: string;
+  }) {
     const page = query.page ?? 1;
     const limit = query.limit ?? 50;
 
-    return this.prisma.reconciliationDiscrepancy
-      .findMany({
-        where: {
-          resolvedAt: null,
-          ...(query.kind ? { kind: query.kind } : {}),
-        },
+    const where = {
+      resolvedAt: null,
+      ...(query.kind ? { kind: query.kind } : {}),
+    };
+
+    // Counted, like `runs()` above. Without it a caller cannot tell a last page
+    // from a full one, and on this list in particular the count *is* the
+    // answer — "how much is still unanswered" is the question a work queue
+    // exists to settle.
+    const [total, items] = await Promise.all([
+      this.prisma.reconciliationDiscrepancy.count({ where }),
+      this.prisma.reconciliationDiscrepancy.findMany({
+        where,
         orderBy: { createdAt: 'asc' },
         skip: (page - 1) * limit,
         take: limit,
-      })
-      .then((items) => ({ page, limit, items }));
+      }),
+    ]);
+
+    return { page, limit, total, items };
   }
 
   /**

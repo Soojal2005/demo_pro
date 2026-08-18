@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { BooleanQuery } from '../../../common/dto/boolean-query.transform';
+import { RequiredText } from '../../../common/dto/required-text.decorator';
 import {
   ArrayMaxSize,
   ArrayUnique,
@@ -278,8 +279,7 @@ export class HideReviewDto {
     description:
       'Required. Moderation carries a reason and a name, or it is not moderation.',
   })
-  @IsString()
-  @MaxLength(500)
+  @RequiredText(500, 'reason')
   reason: string;
 }
 

@@ -1,18 +1,17 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Transform, Type } from 'class-transformer';
+import { Type } from 'class-transformer';
 import {
   IsIn,
   IsISO8601,
   IsInt,
-  IsNotEmpty,
   IsOptional,
   IsString,
   IsUUID,
   Matches,
   Max,
-  MaxLength,
   Min,
 } from 'class-validator';
+import { RequiredText } from '../../../common/dto/required-text.decorator';
 import {
   COMMISSION_STATUSES,
   PAYOUT_STATUSES,
@@ -22,21 +21,8 @@ import {
 
 const RUPEES = /^\d+(\.\d{1,2})?$/;
 
-/**
- * Every `reason` in this module is a record of why money moved, and several are
- * read by the Pro whose money it was. `@IsString() @MaxLength(500)` alone let
- * `""` through, so a commission could be reversed, a deduction raised against
- * someone's earnings, or a debt forgiven, with nothing at all on the row to say
- * who decided that or why. Trimmed first, so a single space is not a loophole.
- */
-const RequiredReason = (): PropertyDecorator => (target, key) => {
-  Transform(({ value }): unknown =>
-    typeof value === 'string' ? value.trim() : value,
-  )(target, key);
-  IsString()(target, key);
-  IsNotEmpty({ message: 'reason is required' })(target, key);
-  MaxLength(500)(target, key);
-};
+/** Every `reason` in this module records why money moved. See `RequiredText`. */
+const RequiredReason = (): PropertyDecorator => RequiredText(500, 'reason');
 
 // ---------------------------------------------------------------------
 // Queries

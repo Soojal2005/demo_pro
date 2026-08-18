@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { BooleanQuery } from '../../../common/dto/boolean-query.transform';
+import { RequiredText } from '../../../common/dto/required-text.decorator';
 import {
   IsBoolean,
   IsIn,
@@ -199,10 +200,9 @@ export class ResolveDiscrepancyDto {
       'Gateway settled late; the capture webhook arrived at 02:14 and the entry is now present.',
     description:
       'What was found and what was done. Nothing is auto-corrected, so this ' +
-      'note is the only record of the answer.',
+      'note is the only record of the answer — and so it cannot be blank.',
   })
-  @IsString()
-  @MaxLength(1000)
+  @RequiredText(1000, 'notes')
   notes: string;
 }
 
