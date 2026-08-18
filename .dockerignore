@@ -1,0 +1,41 @@
+# Dependencies
+node_modules
+
+# Build output
+dist
+coverage
+
+# Git
+.git
+.gitignore
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+.env.production
+.env.local
+
+# GitHub Actions
+.github
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# IDE
+.vscode
+.idea
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+Dockerfile
+docker-compose.yml
+
+# Documentation
+README.md

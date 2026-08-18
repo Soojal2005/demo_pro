@@ -277,18 +277,27 @@ export class NotificationWorkerService
   }
 
   private async recoverInterrupted(): Promise<void> {
-    await this.prisma.notificationOutbox.updateMany({
-      where: {
-        status: 'processing',
-        lockedAt: { lt: new Date(Date.now() - 5 * 60 * 1000) },
-      },
-      data: {
-        status: 'queued',
-        lockedAt: null,
-        lockedBy: null,
-        failureReason: 'Recovered after an interrupted worker',
-      },
-    });
+    // `onModuleInit` fires this without awaiting it, so anything thrown here
+    // escapes as an unhandled rejection and takes the whole process down at
+    // boot. Recovery is best-effort: `drain` picks the rows up on a later tick.
+    try {
+      await this.prisma.notificationOutbox.updateMany({
+        where: {
+          status: 'processing',
+          lockedAt: { lt: new Date(Date.now() - 5 * 60 * 1000) },
+        },
+        data: {
+          status: 'queued',
+          lockedAt: null,
+          lockedBy: null,
+          failureReason: 'Recovered after an interrupted worker',
+        },
+      });
+    } catch (error) {
+      this.logger.error(
+        `Could not recover interrupted notifications; the worker will keep draining the queue normally: ${error instanceof Error ? error.message : 'Unknown database error'}`,
+      );
+    }
   }
 
   private stringVariables(value: Prisma.JsonValue): Record<string, string> {

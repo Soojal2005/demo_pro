@@ -309,6 +309,9 @@ model AdminUser {
   hiddenReviews                Review[]                    @relation("ReviewModerator")
   markedTrainingAttendance     OfflineTrainingAttendance[] @relation("AttendanceMarker")
   adminJobs                    AdminJob[]
+  acknowledgedSosAlerts        SosAlert[]                  @relation("SosAcknowledger")
+  resolvedSosAlerts            SosAlert[]                  @relation("SosResolver")
+  assignedSupportTickets       SupportTicket[]             @relation("TicketAssignee")
 
   @@map("admin_users")
 }
@@ -362,6 +365,8 @@ model Customer {
   ledgerEntries      LedgerEntry[]
   notificationOutbox NotificationOutbox[]
   notificationLogs   NotificationLog[]
+  sosAlerts          SosAlert[]
+  supportTickets     SupportTicket[]
 
   @@index([status, createdAt])
   @@map("customers")
@@ -524,6 +529,8 @@ model Pro {
   ledgerEntries        LedgerEntry[]
   trainingProgress     ProTrainingProgress[]
   trainingAttendance   OfflineTrainingAttendance[]
+  sosAlerts            SosAlert[]
+  supportTickets       SupportTicket[]
 
   @@index([status])
   @@index([isAvailable])
@@ -775,6 +782,8 @@ model Booking {
   orders               Order[]
   notificationOutbox   NotificationOutbox[]
   notificationLogs     NotificationLog[]
+  sosAlerts            SosAlert[]
+  supportTickets       SupportTicket[]
 
   @@index([proId, status])
   @@index([customerId, createdAt])
@@ -1950,4 +1959,163 @@ model AdminJob {
   @@index([adminUserId, createdAt])
   @@index([status, createdAt])
   @@map("admin_jobs")
+}
+
+// =====================================================================
+// 11 · SAFETY & SUPPORT
+// =====================================================================
+//
+// An SOS is deliberately NOT a SupportTicket. Feature 5 — "SOS alerts bypass
+// normal ticket queuing" — is not a priority flag on a shared queue; it is a
+// separate table, a separate route and a separate permission, so an alert
+// cannot end up behind a billing question because someone mis-set a field.
+//
+// The second rule this section exists to keep: `SupportTicket.isInternal` and
+// `TicketMessage.isInternalNote` are the ONLY things standing between ops's
+// private handling of an incident and the person it concerns. Both are
+// enforced in the `where` clause of every non-admin read, never by filtering
+// after the rows are loaded.
+
+/// A one-tap alert from a customer or a Pro who does not feel safe.
+///
+/// Coordinates are optional on purpose. A phone that cannot get a fix must
+/// still be able to raise an alert — a missing pin degrades the response,
+/// while refusing the alert defeats the feature.
+model SosAlert {
+  id        String   @id @default(uuid()) @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// customer | pro — who pressed the button, not who is at risk.
+  raisedByType String
+  customerId   String?   @db.Uuid
+  customer     Customer? @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  proId        String?   @db.Uuid
+  pro          Pro?      @relation(fields: [proId], references: [id], onDelete: Cascade)
+  bookingId    String?   @db.Uuid
+  booking      Booking?  @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+
+  /// Float, matching every other coordinate in this schema — see
+  /// CONFLICTS_AND_DECISIONS #19.
+  lat Float?
+  lng Float?
+
+  raisedAt DateTime @default(now())
+
+  /// The booking context as it was **at the moment the button was pressed**,
+  /// frozen and never re-derived. By the time ops opens the alert the booking
+  /// may be cancelled, reassigned or completed, and a live join would answer a
+  /// different question than the one being asked. Same reasoning as module 8's
+  /// commission-rate snapshotting.
+  contextSnapshot Json
+
+  /// open | acknowledged | resolved | false_alarm
+  status                String     @default("open")
+  acknowledgedByAdminId String?    @db.Uuid
+  acknowledgedByAdmin   AdminUser? @relation("SosAcknowledger", fields: [acknowledgedByAdminId], references: [id], onDelete: SetNull)
+  acknowledgedAt        DateTime?
+  /// Acknowledging and closing are two acts, possibly by two people. The ERD
+  /// records only the first; response time needs both.
+  resolvedByAdminId     String?    @db.Uuid
+  resolvedByAdmin       AdminUser? @relation("SosResolver", fields: [resolvedByAdminId], references: [id], onDelete: SetNull)
+  resolvedAt            DateTime?
+  resolutionNotes       String?
+
+  @@index([status, raisedAt])
+  @@index([bookingId])
+  @@index([customerId, raisedAt])
+  @@index([proId, raisedAt])
+  @@map("sos_alerts")
+}
+
+/// A support case. Raised by a customer, a Pro, or the system itself.
+model SupportTicket {
+  id        String   @id @default(uuid()) @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// customer | pro | system
+  raisedByType String
+  customerId   String?   @db.Uuid
+  customer     Customer? @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  proId        String?   @db.Uuid
+  pro          Pro?      @relation(fields: [proId], references: [id], onDelete: Cascade)
+  bookingId    String?   @db.Uuid
+  booking      Booking?  @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+
+  /// billing | quality | dispute | app_issue | no_start
+  category String
+  subject  String
+  /// low | normal | high | urgent — admin-set. A self-service raiser does not
+  /// choose it, because every ticket would be urgent.
+  priority String @default("normal")
+  /// open | in_progress | escalated | resolved | closed
+  status   String @default("open")
+
+  /// true = ops-only, never surfaced to the customer or the Pro at any depth.
+  /// The no-start ticket is the case this exists for (feature 13).
+  isInternal Boolean @default(false)
+
+  /// System-raised detail — for a no-start, the grace window that was applied
+  /// and where it came from.
+  contextJson Json?
+
+  /// Idempotency for system-raised tickets; null for human ones. A sweep that
+  /// runs every two minutes needs one, or the first no-start becomes forty.
+  /// Same pattern as `PayoutDeduction.dedupeKey`.
+  systemKey String? @unique
+
+  assignedAdminId String?    @db.Uuid
+  assignedAdmin   AdminUser? @relation("TicketAssignee", fields: [assignedAdminId], references: [id], onDelete: SetNull)
+
+  resolutionNotes String?
+  /// none | warning | retraining | service_suspended | suspended.
+  /// A **record of a decision, not an instruction** — suspending a Pro is
+  /// module 6's endpoint, called separately. Two writers of `Pro.status` is
+  /// the shape of CONFLICTS_AND_DECISIONS #33, and once was enough.
+  actionTaken     String?
+
+  escalatedAt DateTime?
+  resolvedAt  DateTime?
+
+  messages TicketMessage[]
+
+  @@index([status, priority, createdAt])
+  @@index([assignedAdminId, status])
+  @@index([bookingId])
+  @@index([customerId, createdAt])
+  @@index([proId, createdAt])
+  @@index([category, status])
+  @@map("support_tickets")
+}
+
+/// One message on a ticket thread.
+///
+/// `senderId` is deliberately a bare string with no foreign key: the sender
+/// may be a customer, a Pro, an admin or the system, and no single column can
+/// reference four tables.
+model TicketMessage {
+  id        String   @id @default(uuid()) @db.Uuid
+  createdAt DateTime @default(now())
+
+  ticketId String        @db.Uuid
+  ticket   SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  /// customer | pro | admin | system
+  senderType String
+  senderId   String
+  body       String
+
+  /// S3 object key, presigned on read — never a public URL. Named `...Url`
+  /// for ERD fidelity, stored exactly like `JobPhotoProof.photoUrl`.
+  attachmentUrl String?
+
+  /// Invisible to the raiser. Enforced by the read query's `where`, so the
+  /// rows are never loaded and cannot be leaked by a later `include`.
+  isInternalNote Boolean @default(false)
+
+  sentAt DateTime @default(now())
+
+  @@index([ticketId, sentAt])
+  @@map("ticket_messages")
 }
