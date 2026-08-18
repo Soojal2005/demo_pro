@@ -157,10 +157,7 @@ export class AdminViewsService {
     if (!customer) throw new NotFoundException('Customer not found');
     return {
       ...customer,
-      support: {
-        available: false,
-        reason: 'Module 11 Safety & Support is not implemented yet',
-      },
+      support: await this.supportSummary({ customerId }),
     };
   }
 
@@ -225,11 +222,78 @@ export class AdminViewsService {
         rate: pro.acceptanceRate,
         reportingOnly: true,
       },
-      support: {
-        available: false,
-        disputeCount: null,
-        reason: 'Module 11 Safety & Support is not implemented yet',
-      },
+      support: await this.supportSummary({ proId }),
+    };
+  }
+
+  /**
+   * The support and safety picture on a 360, now that module 11 exists.
+   *
+   * Counts, not rows. A 360 is a triage screen — an admin who needs the thread
+   * opens the ticket. Loading forty threads to render five numbers is how a
+   * 360 becomes the slowest page in the console.
+   *
+   * `openDisputes` is separated out because it is the count that changes what
+   * an admin does next.
+   */
+  private async supportSummary(scope: {
+    customerId?: string;
+    proId?: string;
+  }): Promise<{
+    available: true;
+    openTickets: number;
+    openDisputes: number;
+    totalTickets: number;
+    openSosAlerts: number;
+    recentTickets: unknown[];
+  }> {
+    const where = scope.customerId
+      ? { customerId: scope.customerId }
+      : { proId: scope.proId! };
+    const open = { status: { in: ['open', 'in_progress', 'escalated'] } };
+
+    const [
+      openTickets,
+      openDisputes,
+      totalTickets,
+      openSosAlerts,
+      recentTickets,
+    ] = await Promise.all([
+      this.prisma.supportTicket.count({ where: { ...where, ...open } }),
+      this.prisma.supportTicket.count({
+        where: { ...where, ...open, category: 'dispute' },
+      }),
+      this.prisma.supportTicket.count({ where }),
+      this.prisma.sosAlert.count({
+        where: { ...where, status: { in: ['open', 'acknowledged'] } },
+      }),
+      this.prisma.supportTicket.findMany({
+        where,
+        select: {
+          id: true,
+          category: true,
+          subject: true,
+          status: true,
+          priority: true,
+          isInternal: true,
+          createdAt: true,
+          resolvedAt: true,
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 10,
+      }),
+    ]);
+
+    return {
+      available: true,
+      openTickets,
+      openDisputes,
+      totalTickets,
+      openSosAlerts,
+      // Internal tickets are included: this is the ops console, and the
+      // no-start incidents are exactly what an admin opening a Pro's 360 after
+      // a complaint needs to see.
+      recentTickets,
     };
   }
 

@@ -138,6 +138,33 @@ export const PermissionCode = {
   NOTIFICATION_READ: 'notification.read',
   NOTIFICATION_TEMPLATE_MANAGE: 'notification.template.manage',
   NOTIFICATION_RETRY: 'notification.retry',
+
+  // --- Module 11 · Safety & Support -----------------------------------
+  //
+  // Four grants where two would have done, and the split is between *safety*
+  // and *support* rather than between read and write alone.
+
+  /** The SOS queue and one alert's frozen context. */
+  SOS_READ: 'safety.sos.read',
+  /**
+   * Acknowledging and closing a safety alert.
+   *
+   * Deliberately separate from `support.ticket.manage`: the SOS screen carries
+   * a live phone number and an address for somebody who has just said they
+   * feel unsafe, and reaching that should be a deliberate grant rather than
+   * something that rides along with the ability to answer a billing question.
+   * This is also the code the alert fan-out routes on — an admin who does not
+   * hold it is not woken up.
+   */
+  SOS_RESPOND: 'safety.sos.respond',
+  /** The ticket queue, a thread with its internal notes, and the evidence bundle. */
+  SUPPORT_TICKET_READ: 'support.ticket.read',
+  /**
+   * Replying, noting, assigning, escalating and closing. Assignment checks for
+   * this code on the *assignee*, because a ticket assigned to somebody who
+   * cannot work it is parked rather than owned.
+   */
+  SUPPORT_TICKET_MANAGE: 'support.ticket.manage',
 } as const;
 
 export type PermissionCode =

@@ -1,5 +1,6 @@
 import { HttpException } from '@nestjs/common';
 import { createHmac } from 'node:crypto';
+import { UpdateNotificationTemplateDto } from './dto/notification.dto';
 import { NotificationsService } from './notifications.service';
 
 describe('NotificationsService', () => {
@@ -59,6 +60,55 @@ describe('NotificationsService', () => {
       service.updateTemplate('test', { isActive: true }, 'admin-1'),
     ).rejects.toBeInstanceOf(HttpException);
     expect(prisma.notificationTemplate.update).not.toHaveBeenCalled();
+  });
+
+  /**
+   * A partial PATCH must keep the fields the caller left out.
+   *
+   * `tsconfig` targets ES2023, so `useDefineForClassFields` is on: a DTO
+   * instance carries every declared property as an **own** key, valued
+   * `undefined` when the caller omitted it. A plain `{ ...current, ...dto }`
+   * therefore blanked `pushTitle` and `pushBody` before validation ran, and
+   * `{"channels":["push"]}` on a perfectly valid template came back as
+   * `400 Push templates require title and body`.
+   *
+   * Found against the live cloud database, not by this suite — the mocks here
+   * were passing plain object literals, which have no undefined own keys and
+   * so could never reproduce it. The DTO instance is constructed explicitly
+   * below for that reason.
+   */
+  it('keeps fields the caller omitted from a partial template update', async () => {
+    const { prisma, service } = build();
+    prisma.notificationTemplate.findUnique.mockResolvedValue({
+      key: 'support.ticket_replied',
+      channels: ['push'],
+      pushTitle: 'Support replied',
+      pushBody: 'There is a new reply.',
+      whatsappTemplate: null,
+      smsBody: null,
+      allowedVariables: [],
+    });
+
+    // What the validation pipe actually hands the service: a class instance
+    // whose untouched fields are own properties set to undefined.
+    const dto = new UpdateNotificationTemplateDto();
+    dto.channels = ['push'];
+    expect('pushTitle' in dto).toBe(true);
+    expect(dto.pushTitle).toBeUndefined();
+
+    await expect(
+      service.updateTemplate('support.ticket_replied', dto, 'admin-1'),
+    ).resolves.toBeDefined();
+
+    // The write must not carry the undefined keys either.
+    const data = prisma.notificationTemplate.update.mock.calls[0][0].data;
+    expect(data).not.toHaveProperty('pushTitle');
+    expect(data).toEqual(
+      expect.objectContaining({
+        channels: ['push'],
+        updatedByAdminId: 'admin-1',
+      }),
+    );
   });
 
   it('verifies delivery webhooks over the unchanged raw body', () => {

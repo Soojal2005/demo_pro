@@ -101,15 +101,31 @@ export class NotificationsService {
     });
     if (!current)
       throw new NotFoundException('Notification template not found');
-    const candidate = { ...current, ...dto };
-    this.validateTemplate(candidate);
+
+    /**
+     * Only the keys the caller actually sent.
+     *
+     * `tsconfig` targets ES2023, so `useDefineForClassFields` is on and every
+     * declared-but-omitted DTO property exists on the instance as an **own**
+     * property valued `undefined`. A plain `{ ...current, ...dto }` therefore
+     * erases every field the caller left out, which made a partial PATCH
+     * impossible: `{"channels":["push"]}` alone blanked `pushTitle` and
+     * `pushBody` in the candidate and was rejected with "Push templates
+     * require title and body".
+     *
+     * Prisma ignores `undefined`, so the write below was always safe — this
+     * only ever corrupted the object that validation ran against, which is
+     * why it presented as a spurious 400 rather than as data loss.
+     */
+    const patch = Object.fromEntries(
+      Object.entries(dto).filter(([, value]) => value !== undefined),
+    ) as Partial<UpdateNotificationTemplateDto>;
+
+    this.validateTemplate({ ...current, ...patch });
+
     return this.prisma.notificationTemplate.update({
       where: { key },
-      data: {
-        ...dto,
-        channels: dto.channels,
-        updatedByAdminId: adminId,
-      },
+      data: { ...patch, updatedByAdminId: adminId },
     });
   }
 

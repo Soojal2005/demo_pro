@@ -5,6 +5,8 @@
 **Depends on:** Booking (evidence), Config (grace window), Notifications
 **Status before this plan:** ⬜ not started — the last unbuilt module in
 [`MODULE_STATUS_REPORT.md`](MODULE_STATUS_REPORT.md)
+**Status now:** ✅ **MVP built, 2026-08-18** — see [§14](#14--what-shipped-in-the-mvp)
+for what shipped, what was cut, and where the build departed from this plan.
 
 ---
 
@@ -705,3 +707,106 @@ reverse is worse.
 But it is a product call with a legal edge, not an engineering one, and it is
 cheap to change later in one read path. Flagging it rather than deciding it
 quietly.
+
+---
+
+## 14 · What shipped in the MVP
+
+**Built 2026-08-18.** ~2,400 lines across `src/modules/support/`, 3 tables, 25
+endpoints, 66 unit tests. Full unit suite **1084/1084**, e2e **181/181**.
+
+### 14.1 · Verified against the real database, not only mocked
+
+The migration was **not** applied with `prisma migrate deploy`. `migrate status`
+against the shared RDS reported the drift the setup notes warn about — the
+teammate's `20260815100000_start_otp_minted_in_house` is applied there and
+exists in no branch — so deploying would have been a coordination event nobody
+asked for.
+
+Instead the SQL was run inside `BEGIN … ROLLBACK` against the live schema.
+Postgres has transactional DDL, so the net effect was nil and every constraint
+was exercised for real:
+
+| Verified                                                    | Constraint                                   |
+| ----------------------------------------------------------- | -------------------------------------------- |
+| The whole migration applies to the deployed schema          | —                                            |
+| A system ticket + internal note inserts                     | —                                            |
+| The same `systemKey` twice is refused                       | `support_tickets_systemKey_key`              |
+| An SOS past `open` must name who acknowledged it            | `sos_alerts_acknowledged_complete_check`     |
+| An SOS from a customer must identify the customer           | `sos_alerts_raiser_present_check`            |
+| A system-raised ticket cannot be visible to its subject     | `support_tickets_system_is_internal_check`   |
+| A `no_start` ticket must name the job                       | `support_tickets_no_start_has_booking_check` |
+| A ticket cannot be resolved without notes **and** an action | `support_tickets_resolution_complete_check`  |
+| A customer cannot author a note hidden from themselves      | `ticket_messages_internal_note_author_check` |
+| The category vocabulary is closed                           | `support_tickets_category_check`             |
+
+**The migration still needs applying**, and that is a coordination event: the
+drift has to be reconciled with the teammate first.
+
+### 14.2 · The bug the e2e suite caught that no unit test could
+
+`SupportWorkerService` injects `RedisService`, and `SupportModule` did not
+import `RedisModule`. Every unit test passed — they construct the service
+directly. `test/module-graph.e2e-spec.ts` compiles the real `AppModule` and
+failed at boot, which is exactly the class of mistake it was added for after
+the module 3 ↔ 6 `forwardRef` episode. One import line.
+
+### 14.3 · Departures from the plan
+
+| Planned                            | Shipped                                       | Why                                                                                                                                                                                                                             |
+| ---------------------------------- | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `NotificationOutbox.priority`      | **Cut**                                       | It touches module 12's table and worker — a coordination event on another module for an MVP. Mechanisms 1 and 3 of §3.3 (an SOS is not a ticket; fan-out is direct to responders) still hold, and they are the load-bearing two |
+| SLA auto-escalation + its settings | **Cut**; `POST .../escalate` is manual        | Four settings and a sweep to automate a judgement ops makes by hand today                                                                                                                                                       |
+| SOS re-notify sweep                | **Cut**                                       | Needs `sos.reNotifyAfterSeconds`; the alert list already sorts open-and-oldest first                                                                                                                                            |
+| Attachment upload flow             | Column accepts an S3 key; no presign endpoint | The storage flow exists in `src/storage` and can be wired without a schema change                                                                                                                                               |
+| `systemDedupeKey`                  | Named `systemKey`                             | Shorter, and `dedupeKey` already means something narrower on the outbox                                                                                                                                                         |
+| 21 endpoints                       | 25                                            | The count in §7 was wrong before this build; the routes themselves are unchanged                                                                                                                                                |
+
+### 14.4 · What is enforced, and by what
+
+| Guarantee                                           | Enforced by                                                                                                                                                            |
+| --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| An internal ticket never reaches its subject        | `raiserScope()` in the `where`, **and** a CHECK making every system ticket internal                                                                                    |
+| An internal note is never loaded on a raiser read   | `RAISER_MESSAGE_INCLUDE`'s `where`, **and** a CHECK on who may author one                                                                                              |
+| A no-start incident is raised at most once          | `support_tickets_systemKey_key`                                                                                                                                        |
+| The Pro is never told about a no-start              | The detector has **no notification dependency at all** — asserted by a test that inspects the injected services, plus the absence of any `support.no_start.*` template |
+| An acknowledged alert names a real responder        | Two CHECK constraints                                                                                                                                                  |
+| A closed ticket says why                            | The service **and** `support_tickets_resolution_complete_check`                                                                                                        |
+| Two responders cannot race the response-time metric | A conditional `updateMany` guarded on `status: 'open'`                                                                                                                 |
+| An unpaid cash job cannot fail a completion         | The adapter swallows its own errors, like the stub it replaced                                                                                                         |
+
+### 14.5 · Coordination events, each its own commit
+
+Six files outside `src/modules/support/` were touched. Per the ownership rule
+they are called out rather than folded into the feature work:
+
+1. `prisma/schema.prisma` + `20260817120000_add_safety_and_support` — three tables, four sets of back-relations
+2. `src/modules/payments/ports/support.port.ts` — `register()` on `NoOpSupportService`, the one stub that lacked the delegate; plus `SUPPORT_PORT` added to the module's exports
+3. `src/modules/identity/constants/permission-code.ts` — four codes
+4. `prisma/seed.ts` — role grants and five notification templates
+5. `src/modules/admin/admin-views.service.ts` and its spec — the two `available: false` support stubs replaced with real counts
+6. `src/app.module.ts` — one import, placed after `PaymentsModule` so the port delegate exists to register into
+
+### 14.6 · Still open
+
+- ~~The migration is unapplied.~~ **Applied to the shared RDS on 2026-08-18**
+  via `prisma migrate deploy`. Purely additive, so the teammate's uncommitted
+  `20260815100000_start_otp_minted_in_house` was untouched — that drift is
+  still open and still theirs to push.
+- ~~No notification template seeding existed before this module, and
+  `booking.start_otp` is enqueuing into failure.~~ **Both claims were wrong.**
+  Twelve templates already existed on the shared database, seeded outside
+  `prisma/seed.ts`. And `booking.start_otp` / `auth.otp` go through
+  `NotificationsService.recordOtpDelivery()`, which writes a `NotificationLog`
+  directly and never looks a template up — so they correctly have no template
+  row. A full audit of all 16 enqueueable keys against the live table
+  ([`audit-notification-templates.js`](../test/manual/audit-notification-templates.js))
+  found **no missing and no inactive templates, and no orphan rows.**
+  One of the pre-existing rows was already `safety.sos_created`, so this
+  module's SOS event **reuses that key** rather than adding
+  `safety.sos_raised` beside it.
+- `routeTrail` still reports `available: false`; module 13 instalment 2 owns it.
+- No admin audit of who changed a ticket's priority — `AdminAuditLog` is still deferred by #63.
+- No request-level e2e over the support routes. Coverage is per-query
+  assertions plus serialise-and-search, the same position module 10 documented
+  in its §16.4.

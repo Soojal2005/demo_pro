@@ -16,23 +16,23 @@
 
 ## Status at a glance
 
-| #   | Module                    | Owns                                                      | Status                                                                            |
-| --- | ------------------------- | --------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| 1   | Identity & Access         | Role, AdminUser                                           | ✅ **Built** — 10/10 features                                                     |
-| 2   | Customer Profile          | Customer, CustomerAddress                                 | ✅ **Built** — 8/9 features; 1 out of scope per ERD                               |
-| 3   | Service Catalog           | ServiceCategory, Service, City                            | ✅ **Built** — 8/8; per-area availability now exists via module 13 (#42)          |
-| 4   | Booking & Job Lifecycle   | Booking, RecurringPlan, BookingStatusEvent, …             | ✅ **Built** — 19/22 features; 3 blocked on modules 5/10/13                       |
-| 5   | Dispatch Engine           | AssignmentCandidate                                       | ✅ **Built** — 14/16 features (this row was stale; §5 below already said so)      |
-| 6   | Pro Management            | Pro, ProApplication, ProService, ProBankAccount           | ✅ **Built** — 19/19 features                                                     |
-| 7   | Payments                  | Order, CashHandover                                       | ✅ **Built** — 17/18 features; handover cadence unresolved by design              |
-| 8   | Commission & Payouts      | BookingCommission, CommissionPayout, Incentive, …         | ✅ **Built** — 13/13 features; 2 of 4 incentive types have evaluators (#3.6)      |
-| 9   | Ledger & Reconciliation   | LedgerEntry, ReconciliationRun, …                         | ✅ **Built** — 9/9 features; variance _trend_ deferred for want of history        |
-| 10  | Training & Reviews        | TrainingModule, ProTrainingProgress, Review, …            | ✅ **Built** — 15/15 features; the activation gate ships **off** (#61)            |
-| 11  | Safety & Support          | SosAlert, SupportTicket, TicketMessage                    | ⬜ Not started                                                                    |
-| 12  | Notifications             | NotificationTemplate, NotificationOutbox, NotificationLog | ✅ **Built** — durable routing, fallbacks, provider status and booking history    |
-| 13  | Geo & Routing             | Area, AreaService, ProArea                                | 🟡 **Mostly built** — areas, geocoding, ETA and WebSockets all live               |
-| 14  | Config & Server-Driven UI | PlatformSetting, PlatformSettingRevision, UiConfig        | ✅ **Built** — setting history, contextual SDUI, versioning, publish and rollback |
-| 15  | Admin Console & Reporting | AdminJob _(audit storage deferred)_                       | 🟡 **Backend core built** — audit and admin WebSockets deferred by #63            |
+| #   | Module                    | Owns                                                      | Status                                                                                                                      |
+| --- | ------------------------- | --------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Identity & Access         | Role, AdminUser                                           | ✅ **Built** — 10/10 features                                                                                               |
+| 2   | Customer Profile          | Customer, CustomerAddress                                 | ✅ **Built** — 8/9 features; 1 out of scope per ERD                                                                         |
+| 3   | Service Catalog           | ServiceCategory, Service, City                            | ✅ **Built** — 8/8; per-area availability now exists via module 13 (#42)                                                    |
+| 4   | Booking & Job Lifecycle   | Booking, RecurringPlan, BookingStatusEvent, …             | ✅ **Built** — 19/22 features; 3 blocked on modules 5/10/13                                                                 |
+| 5   | Dispatch Engine           | AssignmentCandidate                                       | ✅ **Built** — 14/16 features (this row was stale; §5 below already said so)                                                |
+| 6   | Pro Management            | Pro, ProApplication, ProService, ProBankAccount           | ✅ **Built** — 19/19 features                                                                                               |
+| 7   | Payments                  | Order, CashHandover                                       | ✅ **Built** — 17/18 features; handover cadence unresolved by design                                                        |
+| 8   | Commission & Payouts      | BookingCommission, CommissionPayout, Incentive, …         | ✅ **Built** — 13/13 features; 2 of 4 incentive types have evaluators (#3.6)                                                |
+| 9   | Ledger & Reconciliation   | LedgerEntry, ReconciliationRun, …                         | ✅ **Built** — 9/9 features; variance _trend_ deferred for want of history                                                  |
+| 10  | Training & Reviews        | TrainingModule, ProTrainingProgress, Review, …            | ✅ **Built** — 15/15 features; the activation gate ships **off** (#61)                                                      |
+| 11  | Safety & Support          | SosAlert, SupportTicket, TicketMessage                    | ✅ **MVP built** 2026-08-18 — 14/14 features; 4 stretch items cut, see §11                                                  |
+| 12  | Notifications             | NotificationTemplate, NotificationOutbox, NotificationLog | ✅ **Built** — durable routing, fallbacks, provider status and booking history; partial-PATCH defect fixed 2026-08-18 (§12) |
+| 13  | Geo & Routing             | Area, AreaService, ProArea                                | 🟡 **Mostly built** — areas, geocoding, ETA and WebSockets all live                                                         |
+| 14  | Config & Server-Driven UI | PlatformSetting, PlatformSettingRevision, UiConfig        | ✅ **Built** — setting history, contextual SDUI, versioning, publish and rollback                                           |
+| 15  | Admin Console & Reporting | AdminJob _(audit storage deferred)_                       | 🟡 **Backend core built** — audit and admin WebSockets deferred by #63                                                      |
 
 "Stubbed" means the model exists in `prisma/schema.prisma` because a built module needed it as a foreign key or counter source — not that the module is partly built.
 
@@ -51,6 +51,151 @@ The current delivery intentionally does **not** add `AdminAuditLog` or an admin
 WebSocket namespace (conflict #63). Modules 11 and 12 are still prerequisites
 for actual ticket/SOS/notification data; 360 responses label those sections
 unavailable rather than presenting misleading emptiness.
+
+---
+
+## 11 · Safety & Support — MVP built 2026-08-18
+
+Two-sided SOS, tickets with internal notes, no-start detection and the dispute
+evidence bundle. Plan and post-build notes:
+[`MODULE_11_SAFETY_SUPPORT_PLAN.md`](MODULE_11_SAFETY_SUPPORT_PLAN.md).
+
+**This module was mostly sockets, not greenfield.** Four modules had already
+written their half against a stub — module 7's `SUPPORT_PORT` logged a warning
+and returned; `no_start.graceWindowMinutes` had been defined and validated in
+module 15's settings and read by **no code at all**; module 15's 360s returned
+`support: { available: false }`; and module 4's `reconstruct()` was built for
+US-4.24 with no dispute screen to serve. All four are now filled in.
+
+| #     | Feature                                        | Status                                                                                                                                                                                              |
+| ----- | ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1–2   | One-tap SOS from customer **and** Pro          | ✅ Symmetric, six routes each. Coordinates and `bookingId` both optional — a phone with no fix must still be able to raise one                                                                      |
+| 3     | Live location + full booking-context snapshot  | ✅ Frozen at raise time, never re-derived; carries both parties' phone numbers behind `safety.sos.respond`                                                                                          |
+| 4     | Ops ack with response timestamp, then closure  | ✅ Idempotent ack; `responseSeconds` computed from the two timestamps; two CHECK constraints refuse a response nobody made                                                                          |
+| 5     | SOS bypasses ticket queuing                    | 🟡 Two of three mechanisms — it is not a ticket at all, and fan-out goes direct to permission holders in the alert's own transaction. The outbox `priority` column was cut (module 12 coordination) |
+| 6     | Tickets from customer, Pro **or** the system   | ✅ Four entry points, including module 7's now-live billing ticket                                                                                                                                  |
+| 7     | Five categories                                | ✅ `no_start` refused on both self-service routes — at the DTO and by CHECK                                                                                                                         |
+| 8     | Threading with internal-only notes             | ✅ Both invisibility rules live in the `where` clause, never a post-load filter. Serialise-and-search test, as module 10 used for quiz keys                                                         |
+| 9     | Priority and escalation                        | 🟡 Manual escalation writes its reason into the thread. **SLA auto-escalation cut**                                                                                                                 |
+| 10    | Assignment + resolution notes on close         | ✅ Assignment refuses an admin lacking `support.ticket.manage`; notes and `actionTaken` required by service **and** CHECK                                                                           |
+| 11–12 | No-start detection carrying the applied window | ✅ Two-minute sweep; window read **per city**; `graceSource` records whether the number was the city's, the global default, or the fallback                                                         |
+| 13    | Never surfaced to the Pro                      | ✅ The detector has **no notification dependency at all**, and no Pro-facing template exists. A test asserts both                                                                                   |
+| 14    | Dispute evidence from booking records          | ✅ Wraps `BookingsService.reconstruct()` and adds customer review photos. `routeTrail` reports `available: false` — module 13 owns it                                                               |
+
+### The rule this module is built around
+
+`SupportTicket.isInternal` and `TicketMessage.isInternalNote` are the only
+things between ops's private handling of an incident and the person it
+concerns. Both are query predicates rather than filters over loaded rows,
+because a filter keeps working until somebody adds an `include` and then
+quietly stops. A ticket the caller may not see returns **404, not 403** —
+`403` confirms it exists, which for a quietly-handled no-start incident is
+exactly the fact feature 13 says the Pro must not have.
+
+### Verification
+
+1084/1084 unit, 181/181 e2e, clean boot with all 25 routes mapped. The
+migration's ten CHECK constraints were exercised against the **live** RDS
+schema inside `BEGIN … ROLLBACK` rather than applied — `migrate status` shows
+the shared database still holds the teammate's uncommitted
+`20260815100000_start_otp_minted_in_house`, so **applying the migration is a
+coordination event, not done here**.
+
+`test/module-graph.e2e-spec.ts` earned its place again: `SupportModule` was
+missing `RedisModule`, every unit test passed, and only the real `AppModule`
+compile caught it.
+
+### Live cURL verification against AWS RDS — 2026-08-18
+
+Migration applied to the shared RDS with `prisma migrate deploy` (additive
+only; the teammate's uncommitted `20260815100000_start_otp_minted_in_house`
+was untouched and that drift is still open). Server run against the cloud
+database with the mock OTP provider so no real SMS was sent.
+
+**84 of 85 assertions passed** — [`test/manual/run-support-curl.sh`](../test/manual/run-support-curl.sh),
+seeded by [`test/manual/seed-support-cloud.js`](../test/manual/seed-support-cloud.js).
+Both are idempotent and re-runnable.
+
+The proofs worth naming:
+
+| Proved over live HTTP                                                                                                                                             |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| An SOS with a completely empty body is accepted — a phone with no GPS fix can still raise one                                                                     |
+| The frozen snapshot carries both parties' phone numbers to ops, and is **absent** from the raiser's own view                                                      |
+| Acknowledgement is idempotent — the second call returned the first timestamp unchanged                                                                            |
+| Resolving before acknowledging is a `409`                                                                                                                         |
+| An internal note with a sentinel string was invisible in the customer's serialised thread and visible to ops                                                      |
+| The Pro got `404`, not `403`, for another actor's ticket and for the no-start incident about their own job                                                        |
+| The sweep honoured Indore's **120 min** override and stayed silent on a 90-minute-old arrival; dropping it to 15 raised exactly one, tagged `graceSource: "city"` |
+| A second sweep raised nothing — `systemKey` holds at the database                                                                                                 |
+| Marking the job started made the sweep **close its own incident** as `resolved` / `actionTaken: none`                                                             |
+| No `no_start` notification was addressed to anyone, on any channel                                                                                                |
+
+**The one failure was a real pre-existing defect in module 12**, not a bad
+test — see below. It is now fixed.
+
+### Two claims from the pre-live write-up that the cloud DB disproved
+
+Recorded because both were asserted with more confidence than the evidence
+supported:
+
+1. _"No notification template was ever seeded, by any module."_ Wrong — twelve
+   already existed on the shared database, seeded outside `prisma/seed.ts`.
+   One was already `safety.sos_created`, so module 11 now **reuses that key**
+   instead of shipping a near-duplicate `safety.sos_raised`.
+2. _"`booking.start_otp` is enqueuing into failure."_ Wrong — it and `auth.otp`
+   go through `recordOtpDelivery()`, which writes a `NotificationLog` directly
+   and never resolves a template. An audit of all 16 enqueueable keys against
+   the live table found **no missing, no inactive, and no orphan rows**.
+
+### Known gaps
+
+- The teammate's RDS migration drift is still unreconciled.
+- Cut for the MVP: outbox priority, SLA auto-escalation, the SOS re-notify
+  sweep, and the attachment presign endpoint.
+
+---
+
+## 12 · Notifications — partial template PATCH fixed 2026-08-18
+
+Found by cURL testing against the cloud database, not by the unit suite.
+
+`PATCH /admin/notifications/templates/:key` could not update one field. Sending
+`{"channels":["push"]}` against a template that plainly had a title and a body
+came back `400 Push templates require title and body`.
+
+The cause is a TypeScript-emit detail rather than a logic error.
+`tsconfig.json` targets **ES2023**, which turns on `useDefineForClassFields`,
+so a `class` property that is declared but never assigned still exists on the
+instance as an **own** enumerable key holding `undefined`. The validation
+merge was:
+
+```ts
+const candidate = { ...current, ...dto };
+```
+
+Every field the caller omitted therefore overwrote the stored value with
+`undefined` before `validateTemplate` ran. The database was never corrupted —
+Prisma drops `undefined` from an `update` — so it presented purely as a
+spurious `400`, which is why it survived to production-shaped data.
+
+The fix drops undefined keys before merging, and the write now uses the same
+filtered patch:
+
+```ts
+const patch = Object.fromEntries(
+  Object.entries(dto).filter(([, value]) => value !== undefined),
+);
+this.validateTemplate({ ...current, ...patch });
+```
+
+**Why the existing tests missed it, and what changed.** Every case in
+`notifications.service.spec.ts` passed a plain object literal as the DTO —
+`{ isActive: true }` — and an object literal has no undefined own keys, so the
+bug was unreachable from the suite. The regression test now constructs a real
+`UpdateNotificationTemplateDto` instance, the way the validation pipe does,
+and asserts `'pushTitle' in dto` before exercising the update. Reverting the
+one-line fix makes it fail.
 
 ---
 

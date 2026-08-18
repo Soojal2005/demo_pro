@@ -113,6 +113,8 @@ import { RefundsService } from './refunds.service';
     ReconciliationService,
     COMMISSION_REVERSAL_PORT,
     LEDGER_PORT,
+    // Module 11 registers the real ticket system into this delegate at boot.
+    SUPPORT_PORT,
   ],
 })
 export class PaymentsModule {
