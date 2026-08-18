@@ -1,9 +1,10 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   IsIn,
   IsISO8601,
   IsInt,
+  IsNotEmpty,
   IsOptional,
   IsString,
   IsUUID,
@@ -20,6 +21,22 @@ import {
 } from '../commission.types';
 
 const RUPEES = /^\d+(\.\d{1,2})?$/;
+
+/**
+ * Every `reason` in this module is a record of why money moved, and several are
+ * read by the Pro whose money it was. `@IsString() @MaxLength(500)` alone let
+ * `""` through, so a commission could be reversed, a deduction raised against
+ * someone's earnings, or a debt forgiven, with nothing at all on the row to say
+ * who decided that or why. Trimmed first, so a single space is not a loophole.
+ */
+const RequiredReason = (): PropertyDecorator => (target, key) => {
+  Transform(({ value }): unknown =>
+    typeof value === 'string' ? value.trim() : value,
+  )(target, key);
+  IsString()(target, key);
+  IsNotEmpty({ message: 'reason is required' })(target, key);
+  MaxLength(500)(target, key);
+};
 
 // ---------------------------------------------------------------------
 // Queries
@@ -160,8 +177,7 @@ export class ReverseCommissionDto {
       'paid out this becomes the text on the Pro’s deduction, so write it for ' +
       'them to read.',
   })
-  @IsString()
-  @MaxLength(500)
+  @RequiredReason()
   reason: string;
 }
 
@@ -172,15 +188,13 @@ export class RaiseDeductionDto {
   amount: string;
 
   @ApiProperty({ maxLength: 500, example: 'Replacement uniform' })
-  @IsString()
-  @MaxLength(500)
+  @RequiredReason()
   reason: string;
 }
 
 export class WaiveDeductionDto {
   @ApiProperty({ maxLength: 500, example: 'Raised in error' })
-  @IsString()
-  @MaxLength(500)
+  @RequiredReason()
   reason: string;
 }
 
@@ -193,8 +207,7 @@ export class RejectPayoutDto {
       'Sends the batch back. Its commissions are released for the next run and ' +
       'every deduction it was holding is given back in full.',
   })
-  @IsString()
-  @MaxLength(500)
+  @RequiredReason()
   reason: string;
 }
 
@@ -324,6 +337,32 @@ export class DeductionLineDto {
 export class DeductionStatementDto {
   @ApiProperty({ type: String, example: '300.00' }) outstandingTotal: string;
   @ApiProperty({ type: [DeductionLineDto] }) items: DeductionLineDto[];
+}
+
+/**
+ * What an admin sees, which is more than a Pro does.
+ *
+ * The Pro-facing statement hides waived rows entirely — forgiven money is not
+ * their concern. An admin needs the opposite: a waived row has to stay visible
+ * and say so, or the same debt gets raised a second time by whoever looks next.
+ */
+export class AdminDeductionLineDto extends DeductionLineDto {
+  @ApiProperty({ nullable: true }) waivedAt: Date | null;
+  @ApiProperty({ nullable: true }) waiveReason: string | null;
+}
+
+export class AdminDeductionStatementDto {
+  @ApiProperty({
+    type: String,
+    example: '300.00',
+    description:
+      'Still owed across every unwaived row. Waived rows are listed but do ' +
+      'not count towards this.',
+  })
+  outstandingTotal: string;
+
+  @ApiProperty({ type: [AdminDeductionLineDto] })
+  items: AdminDeductionLineDto[];
 }
 
 export class SkippedProDto {

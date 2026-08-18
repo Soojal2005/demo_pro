@@ -4,7 +4,8 @@ import { IsIn, IsOptional, IsString, Matches } from 'class-validator';
 import type { ActorType } from '../../../common/types/authenticated-user.type';
 import { normalizePhone } from './phone.transform';
 
-const ACTOR_TYPES: ActorType[] = ['customer', 'pro', 'admin'];
+/** Admins log in through Firebase only — see `RequestOtpDto`. */
+const ACTOR_TYPES: ActorType[] = ['customer', 'pro'];
 
 export class VerifyOtpDto {
   @ApiProperty({

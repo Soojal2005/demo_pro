@@ -269,8 +269,12 @@ export class AuthService {
   }
 
   /**
-   * Legacy compatibility for Admins already linked to Firebase. New Admin
-   * authentication uses the common phone OTP request/verify endpoints.
+   * The only way into the admin console.
+   *
+   * Firebase proves *who* someone is — by password or by Google, both of which
+   * resolve to the same uid for one person. The `AdminUser` lookup below
+   * decides whether that identity is *allowed*, and it is never created here:
+   * an admin exists because another admin provisioned them, or not at all.
    */
   async loginWithFirebase(dto: FirebaseLoginDto): Promise<TokenPair> {
     const decoded = await this.firebase.verifyIdToken(dto.idToken);
@@ -300,48 +304,12 @@ export class AuthService {
     });
   }
 
+  // `admin` never reaches here: `VerifyOtpDto` rejects it at validation, so
+  // the console has exactly one way in and this method has two actors to
+  // consider rather than a third that quietly bypassed Firebase.
   private async resolveActor(dto: VerifyOtpDto): Promise<ResolvedActor> {
     if (dto.actorType === 'customer') return this.resolveCustomer(dto);
-    if (dto.actorType === 'pro') return this.resolvePro(dto.phone);
-    return this.resolveAdmin(dto.phone);
-  }
-
-  /** OTP proves phone ownership; the existing AWS AdminUser grants access. */
-  private async resolveAdmin(phone: string): Promise<ResolvedActor> {
-    let admin = await this.prisma.adminUser.findUnique({ where: { phone } });
-    // Existing AWS seeds may contain a pre-E.164 10-digit Indian number.
-    // Exact E.164 always wins, avoiding ambiguity where both forms exist.
-    if (!admin && /^\+91\d{10}$/.test(phone)) {
-      admin = await this.prisma.adminUser.findUnique({
-        where: { phone: phone.slice(3) },
-      });
-    }
-    if (!admin) {
-      throw new UnauthorizedException(
-        'No admin account is linked to this phone number',
-      );
-    }
-    if (!admin.isActive) {
-      throw new UnauthorizedException('Admin account is deactivated');
-    }
-
-    await this.prisma.adminUser.update({
-      where: { id: admin.id },
-      data: { lastLoginAt: new Date() },
-    });
-
-    return {
-      actor: {
-        id: admin.id,
-        actorType: 'admin',
-        roleId: admin.roleId,
-        cityScope: (admin.cityScopeJson as string[]) ?? [],
-      },
-      account: this.adminAccount(admin),
-      // An Admin is never created by signing in — `resolveAdmin` has already
-      // thrown above if the phone was unknown.
-      isNewUser: false,
-    };
+    return this.resolvePro(dto.phone);
   }
 
   private async resolveCustomer(dto: VerifyOtpDto): Promise<ResolvedActor> {

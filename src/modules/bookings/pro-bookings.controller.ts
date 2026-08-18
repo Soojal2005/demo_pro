@@ -15,7 +15,7 @@ import {
   ApiOkEnvelope,
 } from '../../common/swagger/api-envelope.decorator';
 import type { AuthenticatedUser } from '../../common/types/authenticated-user.type';
-import type { Booking, ChatMessage, JobPhotoProof } from '../../prisma/client';
+import type { ChatMessage, JobPhotoProof } from '../../prisma/client';
 import { RequireActorType } from '../identity/decorators/require-actor-type.decorator';
 import { ActorTypeGuard } from '../identity/guards/actor-type.guard';
 import { JwtAuthGuard } from '../identity/guards/jwt-auth.guard';
@@ -32,6 +32,11 @@ import {
   VerifyStartOtpDto,
 } from './dto/lifecycle.dto';
 import { JobPhotoProofDto } from './dto/photo-proof.dto';
+import {
+  toProBooking,
+  toProBookings,
+  type ProBookingView,
+} from './pro-booking.view';
 
 /**
  * The Pro App's side of a job.
@@ -57,8 +62,10 @@ export class ProBookingsController {
   @ApiOperation({ summary: 'My assigned jobs' })
   @ApiOkEnvelope(BookingDto, { isArray: true })
   @ApiErrorEnvelope(HttpStatus.UNAUTHORIZED, HttpStatus.FORBIDDEN)
-  list(@CurrentUser() user: AuthenticatedUser): Promise<Booking[]> {
-    return this.bookings.listForPro(user.id);
+  async list(
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<ProBookingView[]> {
+    return toProBookings(await this.bookings.listForPro(user.id));
   }
 
   @Get(':id')
@@ -69,11 +76,11 @@ export class ProBookingsController {
     HttpStatus.FORBIDDEN,
     HttpStatus.NOT_FOUND,
   )
-  getOne(
+  async getOne(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id') id: string,
-  ): Promise<Booking> {
-    return this.bookings.getAssignedBooking(user.id, id);
+  ): Promise<ProBookingView> {
+    return toProBooking(await this.bookings.getAssignedBooking(user.id, id));
   }
 
   @Post(':id/en-route')
@@ -90,12 +97,12 @@ export class ProBookingsController {
     HttpStatus.NOT_FOUND,
     HttpStatus.CONFLICT,
   )
-  enRoute(
+  async enRoute(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id') id: string,
     @Body() dto: TransitionCoordinatesDto,
-  ): Promise<Booking> {
-    return this.lifecycle.markEnRoute(user.id, id, dto);
+  ): Promise<ProBookingView> {
+    return toProBooking(await this.lifecycle.markEnRoute(user.id, id, dto));
   }
 
   @Post(':id/arrived')
@@ -114,12 +121,12 @@ export class ProBookingsController {
     HttpStatus.NOT_FOUND,
     HttpStatus.CONFLICT,
   )
-  arrived(
+  async arrived(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id') id: string,
     @Body() dto: TransitionCoordinatesDto,
-  ): Promise<Booking> {
-    return this.lifecycle.markArrived(user.id, id, dto);
+  ): Promise<ProBookingView> {
+    return toProBooking(await this.lifecycle.markArrived(user.id, id, dto));
   }
 
   @Post(':id/verify-otp')
@@ -138,15 +145,17 @@ export class ProBookingsController {
     HttpStatus.NOT_FOUND,
     HttpStatus.CONFLICT,
   )
-  verifyOtp(
+  async verifyOtp(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id') id: string,
     @Body() dto: VerifyStartOtpDto,
-  ): Promise<Booking> {
-    return this.lifecycle.verifyStartOtp(user.id, id, dto.code, {
-      lat: dto.lat,
-      lng: dto.lng,
-    });
+  ): Promise<ProBookingView> {
+    return toProBooking(
+      await this.lifecycle.verifyStartOtp(user.id, id, dto.code, {
+        lat: dto.lat,
+        lng: dto.lng,
+      }),
+    );
   }
 
   @Post(':id/photos/upload-url')
@@ -218,12 +227,12 @@ export class ProBookingsController {
     HttpStatus.NOT_FOUND,
     HttpStatus.CONFLICT,
   )
-  complete(
+  async complete(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id') id: string,
     @Body() dto: TransitionCoordinatesDto,
-  ): Promise<Booking> {
-    return this.lifecycle.complete(user.id, id, dto);
+  ): Promise<ProBookingView> {
+    return toProBooking(await this.lifecycle.complete(user.id, id, dto));
   }
 
   @Get(':id/messages')

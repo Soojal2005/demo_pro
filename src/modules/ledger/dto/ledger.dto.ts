@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
+import { BooleanQuery } from '../../../common/dto/boolean-query.transform';
 import {
   IsBoolean,
   IsIn,
@@ -141,7 +142,7 @@ export class RunReconciliationDto {
       'reimplemented.',
   })
   @IsOptional()
-  @Type(() => Boolean)
+  @BooleanQuery()
   @IsBoolean()
   rebuildCounters?: boolean;
 }

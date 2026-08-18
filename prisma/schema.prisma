@@ -267,9 +267,11 @@ model AdminUser {
   fullName String
   email    String  @unique
 
-  /// Optional legacy Firebase identity. New Admins authenticate by phone OTP;
-  /// existing Firebase-linked Admins remain compatible during migration.
-  firebaseUid String? @unique
+  /// The Firebase identity this Admin signs in with, by password or by Google.
+  /// Required: it is the console's only door, so an Admin row without one is
+  /// an account that can never be used. Set when another Admin provisions
+  /// them — never by signing in.
+  firebaseUid String @unique
 
   roleId String @db.Uuid
   role   Role   @relation(fields: [roleId], references: [id], onDelete: Restrict)

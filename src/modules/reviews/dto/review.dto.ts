@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
+import { BooleanQuery } from '../../../common/dto/boolean-query.transform';
 import {
   ArrayMaxSize,
   ArrayUnique,
@@ -332,7 +333,7 @@ export class AdminReviewQueryDto extends PagedQueryDto {
     description: 'The moderation queue is `isHidden=false&maxRating=2`.',
   })
   @IsOptional()
-  @Type(() => Boolean)
+  @BooleanQuery()
   @IsBoolean()
   isHidden?: boolean;
 }

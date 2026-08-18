@@ -3,11 +3,12 @@ import { ProApplicationsService } from './pro-applications.service';
 function buildDeps() {
   const prisma = {
     proApplication: {
-      findMany: jest.fn(),
+      findMany: jest.fn().mockResolvedValue([]),
       findFirst: jest.fn(),
       create: jest.fn(),
       findUnique: jest.fn(),
       update: jest.fn(),
+      count: jest.fn().mockResolvedValue(0),
     },
     pro: {
       update: jest.fn(),
@@ -305,5 +306,96 @@ describe('ProApplicationsService', () => {
         data: { status: 'under_review' },
       });
     });
+  });
+});
+
+describe('ProApplicationsService.findAll · searching the queue', () => {
+  async function whereFor(
+    filters: Parameters<ProApplicationsService['findAll']>[0],
+    allowedCityIds?: string[],
+  ) {
+    const deps = buildDeps();
+    await buildService(deps).findAll(filters, allowedCityIds);
+    const [call] = deps.prisma.proApplication.findMany.mock.calls[0] as [
+      { where: Record<string, unknown>; skip: number; take: number },
+    ];
+    return call;
+  }
+
+  it('filters nothing when no filter is given', async () => {
+    const { where } = await whereFor({});
+    expect(where).toEqual({});
+  });
+
+  /**
+   * The two names routinely differ — somebody signs up as "Ravi" and their
+   * Aadhaar reads "Ravi Kumar Chauhan". A reviewer has whichever one the
+   * conversation gave them, so both are searched.
+   */
+  it('matches the applicant name, their phone and the document name', async () => {
+    const { where } = await whereFor({ search: 'ravi' });
+
+    expect(where.OR).toEqual([
+      { pro: { fullName: { contains: 'ravi', mode: 'insensitive' } } },
+      { pro: { phone: { contains: 'ravi', mode: 'insensitive' } } },
+      { documentFullName: { contains: 'ravi', mode: 'insensitive' } },
+    ]);
+  });
+
+  it('ignores an empty search rather than matching everything', async () => {
+    const { where } = await whereFor({ search: '' });
+    expect(where.OR).toBeUndefined();
+  });
+
+  it('combines a search with the queue-status filter', async () => {
+    const { where } = await whereFor({
+      search: 'ravi',
+      queueStatus: 'pending',
+    });
+
+    expect(where.queueStatus).toBe('pending');
+    expect(where.OR).toHaveLength(3);
+  });
+
+  /** A scoped reviewer searching must not reach outside their own cities. */
+  it('keeps the city scope alongside a search', async () => {
+    const { where } = await whereFor({ search: 'ravi' }, ['city-1']);
+
+    expect(where.pro).toEqual({ cityId: { in: ['city-1'] } });
+    expect(where.OR).toHaveLength(3);
+  });
+
+  it('pages against the same filter it counts with', async () => {
+    const deps = buildDeps();
+    deps.prisma.proApplication.count.mockResolvedValue(45);
+
+    const result = await buildService(deps).findAll({ page: 2, limit: 20 });
+
+    const [listCall] = deps.prisma.proApplication.findMany.mock.calls[0] as [
+      { where: unknown; skip: number; take: number },
+    ];
+    const [countCall] = deps.prisma.proApplication.count.mock.calls[0] as [
+      { where: unknown },
+    ];
+    expect(countCall.where).toEqual(listCall.where);
+    expect(listCall.skip).toBe(20);
+    expect(result.meta).toEqual({
+      page: 2,
+      limit: 20,
+      total: 45,
+      totalPages: 3,
+    });
+  });
+
+  /** Longest-waiting first: a queue serves whoever has waited the most. */
+  it('orders the queue oldest first', async () => {
+    const deps = buildDeps();
+
+    await buildService(deps).findAll({});
+
+    const [call] = deps.prisma.proApplication.findMany.mock.calls[0] as [
+      { orderBy: unknown },
+    ];
+    expect(call.orderBy).toEqual({ submittedAt: 'asc' });
   });
 });

@@ -42,15 +42,32 @@ export class AdminUsersService {
       );
     }
 
-    return this.prisma.adminUser.create({
-      data: {
-        phone: dto.phone,
-        fullName: dto.fullName,
-        email: dto.email,
-        roleId: dto.roleId,
-        cityScopeJson: dto.cityScopeJson ?? [],
-      },
+    // Creating the admin here *is* the registration step — there is no other
+    // one, which is what keeps identity alone from ever granting access.
+    const { uid: firebaseUid } = await this.firebase.createUser({
+      email: dto.email,
+      password: dto.password,
+      displayName: dto.fullName,
     });
+
+    try {
+      return await this.prisma.adminUser.create({
+        data: {
+          phone: dto.phone,
+          fullName: dto.fullName,
+          email: dto.email,
+          firebaseUid,
+          roleId: dto.roleId,
+          cityScopeJson: dto.cityScopeJson ?? [],
+        },
+      });
+    } catch (error) {
+      // Firebase is outside the Postgres transaction, so the rollback is
+      // manual. Without it a failed insert leaves a Firebase account that
+      // matches no admin row — an identity nobody can use and nobody can see.
+      await this.firebase.deleteUser(firebaseUid);
+      throw error;
+    }
   }
 
   async update(id: string, dto: UpdateAdminUserDto): Promise<AdminUser> {

@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
+import { BooleanQuery } from '../../../common/dto/boolean-query.transform';
 import {
   IsBoolean,
   IsIn,
@@ -140,7 +141,7 @@ export class UpdateIncentiveDto {
 export class IncentiveQueryDto {
   @ApiPropertyOptional()
   @IsOptional()
-  @Type(() => Boolean)
+  @BooleanQuery()
   @IsBoolean()
   isActive?: boolean;
 
@@ -173,7 +174,7 @@ export class IncentiveProgressQueryDto {
 
   @ApiPropertyOptional({ description: 'Filter to those who have won it.' })
   @IsOptional()
-  @Type(() => Boolean)
+  @BooleanQuery()
   @IsBoolean()
   achieved?: boolean;
 }

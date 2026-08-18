@@ -7,6 +7,7 @@ import {
   IsString,
   IsUUID,
   Matches,
+  MinLength,
 } from 'class-validator';
 import { normalizePhone } from './phone.transform';
 
@@ -22,10 +23,24 @@ export class CreateAdminUserDto {
   @IsString()
   fullName: string;
 
-  /** Contact and audit email; Admin authentication uses the phone OTP flow. */
+  /**
+   * The login identity. Firebase matches a Google sign-in to a password
+   * account by this address, which is why both buttons on the console's login
+   * screen land on the same admin.
+   */
   @ApiProperty()
   @IsEmail()
   email: string;
+
+  /**
+   * Handed to Firebase and never stored here — this database holds no
+   * credential to leak. The admin changes it through Firebase's own reset
+   * flow, not through us.
+   */
+  @ApiProperty({ minLength: 8 })
+  @IsString()
+  @MinLength(8)
+  password: string;
 
   @ApiProperty()
   @IsUUID()

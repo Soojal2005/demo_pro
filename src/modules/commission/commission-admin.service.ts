@@ -328,6 +328,28 @@ export class CommissionAdminService {
       this.deductions.outstandingTotal(proId),
     ]);
 
-    return { outstandingTotal, items: rows };
+    // Mapped, not spread. Returning the Prisma rows straight out published
+    // `consumedAmount`/`createdAt`/`consumedByPayoutId` under names the
+    // documented `DeductionLineDto` does not use, so a client generated from
+    // `/docs/json` read `recovered` and `bookingNumber` as `undefined` — on a
+    // money screen, silently. It also leaked `dedupeKey` and the admin ids.
+    return {
+      outstandingTotal,
+      items: rows.map((row) => ({
+        id: row.id,
+        amount: row.amount.toString(),
+        recovered: row.consumedAmount.toString(),
+        kind: row.kind,
+        reason: row.reason,
+        bookingNumber: row.sourceCommission?.booking.bookingNumber ?? null,
+        raisedAt: row.createdAt,
+        settledAt: row.fullyConsumedAt,
+        payoutId: row.consumedByPayoutId,
+        // Admin-only. The Pro-facing statement filters waived rows out; this
+        // one keeps them and says so, so nobody raises the same debt twice.
+        waivedAt: row.waivedAt,
+        waiveReason: row.waiveReason,
+      })),
+    };
   }
 }

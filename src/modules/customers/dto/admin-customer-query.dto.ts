@@ -7,6 +7,7 @@ import {
   IsString,
   MaxLength,
 } from 'class-validator';
+import { normaliseSearchTerm } from '../../../common/dto/search-term.transform';
 
 export class AdminCustomerQueryDto {
   @ApiPropertyOptional({
@@ -14,11 +15,7 @@ export class AdminCustomerQueryDto {
       'Matches phone, email or full name (partial, case-insensitive).',
   })
   @IsOptional()
-  @Transform(({ value }): unknown => {
-    if (typeof value !== 'string') return value;
-    const trimmed = value.trim();
-    return /^\+\d+$/.test(trimmed) ? trimmed.slice(1) : trimmed;
-  })
+  @Transform(({ value }): unknown => normaliseSearchTerm(value))
   @IsString()
   @MaxLength(200)
   search?: string;
