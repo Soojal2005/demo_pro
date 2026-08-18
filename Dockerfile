@@ -35,7 +35,19 @@ RUN npm ci
 COPY . .
 
 # Generate into /app/generated/prisma per the schema's `output`.
-RUN npx prisma generate
+#
+# The placeholder DATABASE_URL is required, and is not a shortcut.
+# `prisma.config.ts` resolves the datasource with Prisma's `env()` helper,
+# which THROWS when the variable is missing — and `.env` files are excluded
+# from the build context on purpose, so nothing supplies it here. Generation
+# never opens a connection; it only needs the value to resolve. Without this
+# the build dies with `PrismaConfigEnvError: Cannot resolve environment
+# variable: DATABASE_URL`.
+#
+# Set inline on the command rather than as an ENV so the placeholder lives
+# for exactly one layer and cannot be mistaken at runtime for a real URL.
+RUN DATABASE_URL="postgresql://placeholder:placeholder@127.0.0.1:5432/placeholder" \
+    npx prisma generate
 
 RUN npm run build
 
