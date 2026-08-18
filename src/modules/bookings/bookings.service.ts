@@ -387,6 +387,29 @@ export class BookingsService {
         statusEvents: { orderBy: { occurredAt: 'asc' } },
         photoProofs: { orderBy: { capturedAt: 'asc' } },
         chatMessages: { orderBy: { sentAt: 'asc' } },
+
+        // Who and what, not just their ids.
+        //
+        // This route's whole promise is the record in one call — "if
+        // reconstruction takes four tabs, disputes get settled on the
+        // customer's word instead of the record". It was returning
+        // `customerId`, `proId`, `serviceId` and `addressId` and nothing
+        // else, so settling a dispute meant opening those four tabs anyway.
+        // Selected narrowly: enough to know who this is and to ring them.
+        customer: {
+          select: { id: true, fullName: true, phone: true, email: true },
+        },
+        pro: {
+          select: { id: true, fullName: true, phone: true, employeeCode: true },
+        },
+        service: { select: { id: true, name: true, durationMinutes: true } },
+        address: {
+          select: {
+            addressLine: true,
+            landmark: true,
+            city: { select: { id: true, name: true } },
+          },
+        },
       },
     });
     if (!booking) throw apiError('Booking not found', HttpStatus.NOT_FOUND);
