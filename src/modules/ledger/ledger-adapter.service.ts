@@ -76,7 +76,12 @@ export class LedgerAdapterService implements LedgerPort, CommissionLedgerPort {
     await this.ledger.append({
       txnType: 'charge',
       debitAccount: ACCOUNT.GATEWAY,
-      creditAccount: ACCOUNT.REVENUE_BOOKINGS,
+      // A subscription is income the platform keeps whole — no Pro worked for
+      // it and no commission comes out of it — so it is credited to its own
+      // account rather than to gross booking takings.
+      creditAccount: entry.subscriptionId
+        ? ACCOUNT.REVENUE_SUBSCRIPTIONS
+        : ACCOUNT.REVENUE_BOOKINGS,
       amount: entry.amount,
       sourceRef: sourceRef.capture(entry.orderId),
       bookingId: entry.bookingId,

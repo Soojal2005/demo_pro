@@ -21,12 +21,17 @@ export class CashCollectionService {
   /**
    * Feature 13 — collection at the door.
    *
-   * **The amount is not a parameter.** It is `flatPrice` or it is nothing. A
-   * Pro who could type an amount could under-declare what they collected and
-   * pocket the difference, and no later reconciliation would find it — the
-   * booking would agree with the ledger, and both would be wrong. The database
-   * carries the same rule as a CHECK constraint, so it holds even if some
-   * future caller forgets it.
+   * **The amount is not a parameter.** It is `payableAmount` or it is
+   * nothing. A Pro who could type an amount could under-declare what they
+   * collected and pocket the difference, and no later reconciliation would
+   * find it — the booking would agree with the ledger, and both would be
+   * wrong. The database carries the same rule as a CHECK constraint, so it
+   * holds even if some future caller forgets it.
+   *
+   * `payableAmount` rather than `flatPrice` since module 16: a customer who
+   * put 200 coins against a ₹500 job owes ₹300 at the door, and a Pro
+   * insisting on ₹500 because the app told them to is the argument this one
+   * column change prevents.
    *
    * `paymentStatus = paid` after this means **an employee is carrying
    * banknotes**, not that the platform has the money. Nothing downstream may
@@ -45,7 +50,7 @@ export class CashCollectionService {
       const updated = await tx.booking.update({
         where: { id: booking.id },
         data: {
-          cashCollectedAmount: booking.flatPrice,
+          cashCollectedAmount: booking.payableAmount,
           cashCollectedAt: new Date(),
           paymentStatus: 'paid',
         },
@@ -57,7 +62,7 @@ export class CashCollectionService {
       // manufactured here.
       await tx.pro.update({
         where: { id: proId },
-        data: { cashInHand: { increment: booking.flatPrice } },
+        data: { cashInHand: { increment: booking.payableAmount } },
       });
 
       return updated;

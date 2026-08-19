@@ -27,6 +27,7 @@ import { RequireActorType } from '../identity/decorators/require-actor-type.deco
 import { ActorTypeGuard } from '../identity/guards/actor-type.guard';
 import { JwtAuthGuard } from '../identity/guards/jwt-auth.guard';
 import { BookingCancellationService } from './booking-cancellation.service';
+import { BookingRescheduleService } from './booking-reschedule.service';
 import { BookingChatService } from './booking-chat.service';
 import { BookingLifecycleService } from './booking-lifecycle.service';
 import { BookingTrackingService } from './booking-tracking.service';
@@ -34,6 +35,13 @@ import { BookingsService } from './bookings.service';
 import { BookingDto } from './dto/booking.dto';
 import { TrackingDto } from './dto/tracking.dto';
 import { CancelBookingDto } from './dto/cancel-booking.dto';
+import {
+  BookingQuoteDto,
+  BookingQuoteRequestDto,
+  CancellationPolicyDto,
+  RescheduleBookingDto,
+  ReschedulePreviewDto,
+} from './dto/reschedule-booking.dto';
 import { ChatMessageDto, SendMessageDto } from './dto/chat.dto';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import {
@@ -56,14 +64,50 @@ export class BookingsController {
     private readonly lifecycle: BookingLifecycleService,
     private readonly plans: RecurringPlansService,
     private readonly tracking_: BookingTrackingService,
+    private readonly reschedule_: BookingRescheduleService,
   ) {}
+
+  @Post('quote')
+  @ApiOperation({
+    summary: 'What would this booking cost me?',
+    description:
+      'Prices a booking without creating one — the endpoint behind the coin ' +
+      'slider, safe to call on every drag.\n\n' +
+      'The subscription discount applies first and coins fill what is left, ' +
+      'so a subscriber gets the percentage they paid for whether or not they ' +
+      'have a balance. `coinsToRedeem` is **clamped, never rejected**: asking ' +
+      'to spend more than you hold, or more than `maxRedeemableCoins`, spends ' +
+      'what is allowed and tells you so.\n\n' +
+      'Runs the same code `POST /bookings` runs, so the number here is the ' +
+      'number you will be charged.',
+  })
+  @ApiOkEnvelope(BookingQuoteDto)
+  @ApiErrorEnvelope(
+    HttpStatus.BAD_REQUEST,
+    HttpStatus.UNAUTHORIZED,
+    HttpStatus.FORBIDDEN,
+    HttpStatus.NOT_FOUND,
+  )
+  quote(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: BookingQuoteRequestDto,
+  ): Promise<BookingQuoteDto> {
+    return this.bookings.quote(
+      user.id,
+      dto.serviceId,
+      dto.coinsToRedeem ?? 0,
+      dto.addressId,
+    );
+  }
 
   @Post()
   @ApiOperation({
     summary: 'Book a service',
     description:
       'Instant when `slotStartAt` is omitted, scheduled when it is given. The ' +
-      'price is read from the catalogue and frozen — it is never an input.',
+      'price is read from the catalogue and frozen — it is never an input. ' +
+      '`coinsToRedeem` spends Homingo Coins against it; call ' +
+      '`POST /bookings/quote` first to see what will be allowed.',
   })
   @ApiHeader({
     name: 'Idempotency-Key',
@@ -208,6 +252,93 @@ export class BookingsController {
     @Body() dto: CancelBookingDto,
   ): Promise<Booking> {
     return this.cancellation.cancelAsCustomer(user.id, id, dto.reason);
+  }
+
+  @Get(':id/cancellation-policy')
+  @ApiOperation({
+    summary: 'What happens if I cancel this now?',
+    description:
+      'The confirm screen, computed by the **same function that executes the ' +
+      'cancellation** — a preview that can disagree with the action would show ' +
+      'the customer one number and charge them another.\n\n' +
+      'Two things decide the fee, not one: which status window the booking is ' +
+      'in, and how long until the Pro was due. Cancel more than ' +
+      '`freeCancellationHours` before the slot — six by default — and it is ' +
+      'free whatever the window; `freeUntil` is that instant. Inside it, a ' +
+      'percentage of `payableAmount` is retained, unless the customer holds a ' +
+      'plan that waives it.\n\n' +
+      'Redeemed coins come back regardless of the fee.',
+  })
+  @ApiOkEnvelope(CancellationPolicyDto)
+  @ApiErrorEnvelope(
+    HttpStatus.UNAUTHORIZED,
+    HttpStatus.FORBIDDEN,
+    HttpStatus.NOT_FOUND,
+  )
+  async cancellationPolicy(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+  ): Promise<CancellationPolicyDto> {
+    // Ownership first — someone else's booking must look like none.
+    await this.bookings.getOwnedBooking(user.id, id);
+    return this.cancellation.describeWindow(id);
+  }
+
+  @Get(':id/reschedule')
+  @ApiOperation({
+    summary: 'Can I move this, and to when?',
+    description:
+      'Ask before opening a date picker, so a customer is never offered a slot ' +
+      'the next call would refuse. `earliestNewSlotAt` is where the picker ' +
+      'should start.',
+  })
+  @ApiOkEnvelope(ReschedulePreviewDto)
+  @ApiErrorEnvelope(
+    HttpStatus.UNAUTHORIZED,
+    HttpStatus.FORBIDDEN,
+    HttpStatus.NOT_FOUND,
+  )
+  reschedulePreview(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+  ): Promise<ReschedulePreviewDto> {
+    return this.reschedule_.preview(user.id, id);
+  }
+
+  @Post(':id/reschedule')
+  @ApiOperation({
+    summary: 'Move this booking to another slot',
+    description:
+      'Free inside your allowance — two moves by default, more with a plan. ' +
+      'Nothing is refunded and nothing is charged: the price stays frozen, ' +
+      'coins stay spent, and the booking keeps its number.\n\n' +
+      '**Refused rather than charged inside the cutoff.** Six hours out, the ' +
+      "Pro's day is already built around this address, and moving it then is " +
+      'the same disruption as cancelling with the platform still on the hook ' +
+      'for a new slot. Cancel instead — the fee there is at least honest about ' +
+      'what happened.\n\n' +
+      'A booking that already had a Pro returns to `assigning` and dispatch ' +
+      're-runs against the new time.',
+  })
+  @ApiOkEnvelope(BookingDto)
+  @ApiErrorEnvelope(
+    HttpStatus.BAD_REQUEST,
+    HttpStatus.UNAUTHORIZED,
+    HttpStatus.FORBIDDEN,
+    HttpStatus.NOT_FOUND,
+    HttpStatus.CONFLICT,
+  )
+  reschedule(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: RescheduleBookingDto,
+  ): Promise<Booking> {
+    return this.reschedule_.rescheduleAsCustomer(
+      user.id,
+      id,
+      dto.slotStartAt,
+      dto.reason,
+    );
   }
 
   @Post(':id/start-otp/resend')

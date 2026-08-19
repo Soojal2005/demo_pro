@@ -56,6 +56,17 @@ function buildDeps() {
     config,
     otp,
     commission,
+    loyalty: {
+      quote: jest.fn(),
+      commit: jest.fn(),
+      release: jest.fn(),
+      onBookingCompleted: jest.fn().mockResolvedValue(undefined),
+      perksFor: jest.fn().mockResolvedValue({
+        waivesCancellationFee: false,
+        extraReschedules: 0,
+        planName: null,
+      }),
+    },
   };
 }
 
@@ -73,6 +84,7 @@ function buildService(
     deps.config as never,
     deps.otp,
     deps.commission,
+    deps.loyalty,
   );
 }
 
@@ -95,6 +107,7 @@ const arrivedBooking = {
   startOtpProviderRef: 'ref-1',
   startOtpAttempts: 0,
   flatPrice: { toString: () => '599.00' },
+  payableAmount: { toString: () => '599.00' },
 };
 
 describe('BookingLifecycleService', () => {

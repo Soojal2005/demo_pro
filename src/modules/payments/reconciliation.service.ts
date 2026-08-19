@@ -230,7 +230,7 @@ export class ReconciliationService {
       select: {
         id: true,
         bookingNumber: true,
-        flatPrice: true,
+        payableAmount: true,
         cashDeclinedAt: true,
         cashDeclinedReason: true,
       },
@@ -241,8 +241,8 @@ export class ReconciliationService {
         kind: 'cash_completed_uncollected',
         reference: booking.bookingNumber,
         ours: '0.00',
-        theirs: booking.flatPrice.toString(),
-        variance: `-${booking.flatPrice.toString()}`,
+        theirs: booking.payableAmount.toString(),
+        variance: `-${booking.payableAmount.toString()}`,
         detail: booking.cashDeclinedAt
           ? `Customer declined to pay: ${booking.cashDeclinedReason ?? 'no reason given'}. The Pro is still owed commission.`
           : 'Completed with no collection recorded and no decline — the Pro may not have recorded it.',

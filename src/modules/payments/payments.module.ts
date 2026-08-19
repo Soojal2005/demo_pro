@@ -25,6 +25,10 @@ import {
 } from './ports/commission-reversal.port';
 import { LEDGER_PORT, NoOpLedgerService } from './ports/ledger.port';
 import { NoOpSupportService, SUPPORT_PORT } from './ports/support.port';
+import {
+  NoOpSubscriptionService,
+  SUBSCRIPTION_PORT,
+} from './ports/subscription.port';
 import { ProPaymentsController } from './pro-payments.controller';
 import { RAZORPAY_OPTIONS, RazorpayClient } from './razorpay.client';
 import { RealPaymentsAdapter } from './real-payments.adapter';
@@ -49,6 +53,10 @@ import { RefundsService } from './refunds.service';
  * - {@link LEDGER_PORT} → module 9. Double-entry rows, including the
  *   `cash_in_hand:<proId>` account.
  * - {@link SUPPORT_PORT} → module 11. The billing ticket for an unpaid job.
+ * - {@link SUBSCRIPTION_PORT} → module 16. Pricing a plan before checkout, and
+ *   handing it over once the money lands. The one stub here that **throws** on
+ *   the read half, because it runs before any money moves — returning a fake
+ *   price would take a real payment for a plan nothing can grant.
  * - {@link COMMISSION_REVERSAL_PORT} → module 8. A fully refunded job has to
  *   unwind the Pro's pay. Named for the reversal rather than for commission so
  *   it cannot be confused with module 4's `COMMISSION_PORT` at an inject site.
@@ -97,6 +105,7 @@ import { RefundsService } from './refunds.service';
     RealPaymentsAdapter,
     { provide: LEDGER_PORT, useClass: NoOpLedgerService },
     { provide: SUPPORT_PORT, useClass: NoOpSupportService },
+    { provide: SUBSCRIPTION_PORT, useClass: NoOpSubscriptionService },
     {
       provide: COMMISSION_REVERSAL_PORT,
       useClass: NoOpCommissionReversalService,
@@ -115,6 +124,10 @@ import { RefundsService } from './refunds.service';
     LEDGER_PORT,
     // Module 11 registers the real ticket system into this delegate at boot.
     SUPPORT_PORT,
+    // Module 16 registers the real subscription service into this delegate,
+    // and calls OrdersService directly to open a plan checkout.
+    SUBSCRIPTION_PORT,
+    OrdersService,
   ],
 })
 export class PaymentsModule {

@@ -232,7 +232,11 @@ export class RefundsService {
       : 0;
     const captured = toPaise(updated.amountPaid.toString());
 
-    if (refunded >= captured && captured > 0) {
+    // `bookingId` is null when the order bought a subscription. There is no
+    // `paymentStatus` to move in that case — the subscription's own status is
+    // what says whether it is still live, and ops sets that when they decide
+    // what a part-used plan is worth back.
+    if (refunded >= captured && captured > 0 && updated.bookingId) {
       await this.prisma.booking.update({
         where: { id: updated.bookingId },
         data: { paymentStatus: 'refunded' },
@@ -297,7 +301,18 @@ export class RefundsService {
     return order;
   }
 
-  private async paidOrderFor(bookingId: string): Promise<Order> {
+  /**
+   * The captured order behind one booking.
+   *
+   * Returns `Order & { bookingId: string }` rather than a bare `Order`,
+   * because everything downstream writes back to the booking and `bookingId`
+   * became nullable in module 16 — an order can now belong to a subscription
+   * instead. Narrowing here, where the row was found *by* `bookingId`, keeps
+   * the rest of this service free of guards that could never fire.
+   */
+  private async paidOrderFor(
+    bookingId: string,
+  ): Promise<Order & { bookingId: string }> {
     const order = await this.prisma.order.findFirst({
       where: { bookingId, status: 'paid' },
       orderBy: { paidAt: 'desc' },
@@ -321,6 +336,8 @@ export class RefundsService {
       );
     }
 
-    return order;
+    // Safe by construction: the row was found *by* `bookingId`, so the column
+    // that became nullable in module 16 cannot be null on this path.
+    return order as Order & { bookingId: string };
   }
 }

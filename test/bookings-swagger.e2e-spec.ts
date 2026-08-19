@@ -8,6 +8,7 @@ import { AdminBookingsController } from './../src/modules/bookings/admin-booking
 import { BookingCancellationService } from './../src/modules/bookings/booking-cancellation.service';
 import { BookingChatService } from './../src/modules/bookings/booking-chat.service';
 import { BookingLifecycleService } from './../src/modules/bookings/booking-lifecycle.service';
+import { BookingRescheduleService } from './../src/modules/bookings/booking-reschedule.service';
 import { BookingsController } from './../src/modules/bookings/bookings.controller';
 import { BookingTrackingService } from './../src/modules/bookings/booking-tracking.service';
 import { BookingsService } from './../src/modules/bookings/bookings.service';
@@ -53,6 +54,7 @@ describe('Bookings Swagger contract (e2e)', () => {
         { provide: BookingLifecycleService, useValue: {} },
         { provide: RecurringPlansService, useValue: {} },
         { provide: BookingTrackingService, useValue: {} },
+        { provide: BookingRescheduleService, useValue: {} },
       ],
     })
       .overrideGuard(JwtAuthGuard)

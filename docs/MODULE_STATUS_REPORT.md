@@ -16,25 +16,156 @@
 
 ## Status at a glance
 
-| #   | Module                    | Owns                                                      | Status                                                                                                                      |
-| --- | ------------------------- | --------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| 1   | Identity & Access         | Role, AdminUser                                           | ✅ **Built** — 10/10 features                                                                                               |
-| 2   | Customer Profile          | Customer, CustomerAddress                                 | ✅ **Built** — 8/9 features; 1 out of scope per ERD                                                                         |
-| 3   | Service Catalog           | ServiceCategory, Service, City                            | ✅ **Built** — 8/8; per-area availability now exists via module 13 (#42)                                                    |
-| 4   | Booking & Job Lifecycle   | Booking, RecurringPlan, BookingStatusEvent, …             | ✅ **Built** — 19/22 features; 3 blocked on modules 5/10/13                                                                 |
-| 5   | Dispatch Engine           | AssignmentCandidate                                       | ✅ **Built** — 14/16 features (this row was stale; §5 below already said so)                                                |
-| 6   | Pro Management            | Pro, ProApplication, ProService, ProBankAccount           | ✅ **Built** — 19/19 features                                                                                               |
-| 7   | Payments                  | Order, CashHandover                                       | ✅ **Built** — 17/18 features; handover cadence unresolved by design                                                        |
-| 8   | Commission & Payouts      | BookingCommission, CommissionPayout, Incentive, …         | ✅ **Built** — 13/13 features; 2 of 4 incentive types have evaluators (#3.6)                                                |
-| 9   | Ledger & Reconciliation   | LedgerEntry, ReconciliationRun, …                         | ✅ **Built** — 9/9 features; variance _trend_ deferred for want of history                                                  |
-| 10  | Training & Reviews        | TrainingModule, ProTrainingProgress, Review, …            | ✅ **Built** — 15/15 features; the activation gate ships **off** (#61)                                                      |
-| 11  | Safety & Support          | SosAlert, SupportTicket, TicketMessage                    | ✅ **MVP built** 2026-08-18 — 14/14 features; 4 stretch items cut, see §11                                                  |
-| 12  | Notifications             | NotificationTemplate, NotificationOutbox, NotificationLog | ✅ **Built** — durable routing, fallbacks, provider status and booking history; partial-PATCH defect fixed 2026-08-18 (§12) |
-| 13  | Geo & Routing             | Area, AreaService, ProArea                                | 🟡 **Mostly built** — areas, geocoding, ETA and WebSockets all live                                                         |
-| 14  | Config & Server-Driven UI | PlatformSetting, PlatformSettingRevision, UiConfig        | ✅ **Built** — setting history, contextual SDUI, versioning, publish and rollback                                           |
-| 15  | Admin Console & Reporting | AdminJob _(audit storage deferred)_                       | 🟡 **Backend core built** — audit and admin WebSockets deferred by #63                                                      |
+| #   | Module                             | Owns                                                                                                                 | Status                                                                                                                                        |
+| --- | ---------------------------------- | -------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Identity & Access                  | Role, AdminUser                                                                                                      | ✅ **Built** — 10/10 features                                                                                                                 |
+| 2   | Customer Profile                   | Customer, CustomerAddress                                                                                            | ✅ **Built** — 8/9 features; 1 out of scope per ERD                                                                                           |
+| 3   | Service Catalog                    | ServiceCategory, Service, City                                                                                       | ✅ **Built** — 8/8; per-area availability now exists via module 13 (#42)                                                                      |
+| 4   | Booking & Job Lifecycle            | Booking, RecurringPlan, BookingStatusEvent, …                                                                        | ✅ **Built** — 19/22 features; 3 blocked on modules 5/10/13                                                                                   |
+| 5   | Dispatch Engine                    | AssignmentCandidate                                                                                                  | ✅ **Built** — 14/16 features (this row was stale; §5 below already said so)                                                                  |
+| 6   | Pro Management                     | Pro, ProApplication, ProService, ProBankAccount                                                                      | ✅ **Built** — 19/19 features                                                                                                                 |
+| 7   | Payments                           | Order, CashHandover                                                                                                  | ✅ **Built** — 17/18 features; handover cadence unresolved by design                                                                          |
+| 8   | Commission & Payouts               | BookingCommission, CommissionPayout, Incentive, …                                                                    | ✅ **Built** — 13/13 features; 2 of 4 incentive types have evaluators (#3.6)                                                                  |
+| 9   | Ledger & Reconciliation            | LedgerEntry, ReconciliationRun, …                                                                                    | ✅ **Built** — 9/9 features; variance _trend_ deferred for want of history                                                                    |
+| 10  | Training & Reviews                 | TrainingModule, ProTrainingProgress, Review, …                                                                       | ✅ **Built** — 15/15 features; the activation gate ships **off** (#61)                                                                        |
+| 11  | Safety & Support                   | SosAlert, SupportTicket, TicketMessage                                                                               | ✅ **MVP built** 2026-08-18 — 14/14 features; 4 stretch items cut, see §11                                                                    |
+| 12  | Notifications                      | NotificationTemplate, NotificationOutbox, NotificationLog                                                            | ✅ **Built** — durable routing, fallbacks, provider status and booking history; partial-PATCH defect fixed 2026-08-18 (§12)                   |
+| 13  | Geo & Routing                      | Area, AreaService, ProArea                                                                                           | 🟡 **Mostly built** — areas, geocoding, ETA and WebSockets all live                                                                           |
+| 14  | Config & Server-Driven UI          | PlatformSetting, PlatformSettingRevision, UiConfig                                                                   | ✅ **Built** — setting history, contextual SDUI, versioning, publish and rollback                                                             |
+| 15  | Admin Console & Reporting          | AdminJob _(audit storage deferred)_                                                                                  | 🟡 **Backend core built** — audit and admin WebSockets deferred by #63                                                                        |
+| 16  | Loyalty (wallet, plans, referrals) | CustomerWallet, WalletTransaction, SubscriptionPlan, CustomerSubscription, ReferralCode, Referral, BookingReschedule | ✅ **Built** 2026-08-19 — coins, subscriptions with online checkout, Refer & Earn, and the time-based cancellation/reschedule policy. See §16 |
 
 "Stubbed" means the model exists in `prisma/schema.prisma` because a built module needed it as a foreign key or counter source — not that the module is partly built.
+
+---
+
+## 16 · Loyalty — built 2026-08-19
+
+Homingo Coins, subscription plans, Refer & Earn, and a cancellation/reschedule
+policy that finally has a clock in it. Plan and post-build notes:
+[`MODULE_16_LOYALTY_PLAN.md`](MODULE_16_LOYALTY_PLAN.md).
+
+**Four requests, one module, one column.** They were asked for separately and
+they join at `Booking.payableAmount` — a number that did not previously exist,
+because `flatPrice` was both the list price and the charge. Building them apart
+would have produced four features each with its own idea of what a booking
+costs, and the first cancellation of a discounted booking would have refunded
+the wrong amount (#67).
+
+### The rule the module is built around
+
+> **Nothing pays out for an intention. Everything pays out for a completed job.**
+
+Coins are earned on completion, not on booking. A referral rewards when the
+referee's first job _finishes_, not when they sign up. A subscription is worth
+nothing until its payment is confirmed. Each is the cheapest defence against
+the same attack: a signup, a booking and a checkout intent all cost an attacker
+nothing, and a completed job costs them a real payment at a real address a real
+Pro visited.
+
+### Features
+
+| #   | Feature                                       | Status                                                                                                                                                                               |
+| --- | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1   | Homingo Coins wallet with a coin statement    | ✅ Append-only log modelled on `LedgerEntry`; the balance is a cache and the log wins (#68). One writer, per-customer row lock, `sourceRef` unique index                             |
+| 2   | Earn rate that rises with jobs booked         | ✅ Four tiers, 3→10%, thresholds and rates all `PlatformSetting`. The **completing job counts**, so the fifth booking earns at the silver rate                                       |
+| 3   | Redeem coins against a booking                | ✅ Capped at 20% of the booking, clamped to the balance. Never rejected — asking for more spends what is allowed                                                                     |
+| 4   | Coin expiry                                   | ✅ Credit by credit, not by balance, so the statement explains the loss. Expiry frozen at credit time; admin adjustments never lapse                                                 |
+| 5   | Subscription plan catalogue                   | ✅ Rows, not code. Three plans seeded. City-scopable. Editing a plan never touches a live subscription                                                                               |
+| 6   | Buying a plan                                 | ✅ Two-step purchase → activate. **Online self-checkout added 2026-08-19** — `Order` now belongs to a booking _or_ a subscription (#75); cash, complimentary and ops paths unchanged |
+| 7   | Plan perks applied to bookings                | ✅ Percentage (capped), coin multiplier, fee waiver, extra reschedules, included-booking allowance. All **frozen at purchase**                                                       |
+| 8   | One live plan per customer                    | ✅ Partial unique index, so it holds under two concurrent activations — not a read-then-write                                                                                        |
+| 9   | Refer & Earn code                             | ✅ Six characters, no `0/O` or `1/I/L`, `crypto.randomInt`, CHECK-enforced format. Minted lazily                                                                                     |
+| 10  | Referral attribution                          | ✅ Every refusal happens **at attribution**, not at reward time — unknown, own, blocked, capped, already-referred, already-a-customer                                                |
+| 11  | Referral reward                               | ✅ Pays on the referee's first _completed_ job. Two credits with separate `sourceRef`s; status moves to `rewarded` only when both land, which makes the retry safe                   |
+| 12  | Referral abuse controls                       | ✅ `refereeId` unique (referred once, ever), self-referral CHECK, per-referrer cap, qualifying window, ops block that spares referrals already earned                                |
+| 13  | Cancellation policy with a 6-hour free window | ✅ Second axis beside the six status windows (#69). Free outside the cutoff **whatever the window, including D**; percentage of `payableAmount` inside it                            |
+| 14  | Cancellation preview                          | ✅ `GET /bookings/:id/cancellation-policy`, computed by the **same function that executes the cancellation**. Returns `freeUntil`                                                    |
+| 15  | Reschedule                                    | ✅ Free inside the allowance; **refused rather than charged** inside the cutoff (#70). Assignment released, dispatch re-runs, append-only history                                    |
+| 16  | Coins returned on cancellation                | ✅ Regardless of the fee — the fee is money and the coins are an entitlement, and keeping both charges twice for one cancellation                                                    |
+| 17  | Ops surface                                   | ✅ Wallet adjust (attributed, CHECK-enforced), balance rebuild, plan CRUD, grant/activate/cancel, referral block and reject, manual sweep                                            |
+| 18  | Background sweep                              | ✅ Hourly, Redis-locked, `unref`'d `setTimeout` — the house pattern, no new dependency. Also an admin endpoint                                                                       |
+
+### The decisions worth arguing with
+
+Eight, all written up in [`CONFLICTS_AND_DECISIONS.md`](CONFLICTS_AND_DECISIONS.md)
+§67–§74. The three most likely to be disputed:
+
+- **Coins are not in the ledger** (#68). They are a discount entitlement, not
+  currency; nothing external will ever settle against them, and hash-chaining
+  them would put entries in the chain that no external record can reconcile.
+- **Commission stays on `flatPrice`** (#71). The Pro did the same work whether
+  or not marketing discounted the job. The platform's margin absorbs the whole
+  discount, which is a pricing constraint on whoever configures the plans.
+- **Window D no longer always charges** (#69). The scope document implies it
+  does. A Pro marked en route six hours early has lost nothing, and the clock
+  is the better authority.
+
+### Verification
+
+| Check                        | Result                                                                        |
+| ---------------------------- | ----------------------------------------------------------------------------- |
+| `npm run typecheck` / `lint` | clean                                                                         |
+| `npx jest`                   | **1,255 / 1,255** across 100 suites (was 1,085 / 1,085 across 93)             |
+| `npm run test:e2e`           | **181 / 181** across 8 suites                                                 |
+| `module-graph.e2e-spec.ts`   | the real `AppModule` graph resolves with `LoyaltyModule` in it                |
+| `http-routes.e2e-spec.ts`    | Fastify registers every route, no collision                                   |
+| Route probe on a booted app  | all 33 new routes registered                                                  |
+| Migration against live RDS   | applied cleanly inside `BEGIN … ROLLBACK`; 7 constraints probed, all enforced |
+
+170 new tests: 27 on the pure arithmetic, 26 on the wallet, 22 on referrals, 19
+on subscriptions, 35 on the cancellation and reschedule policy, 15 on the
+reschedule service, 13 on online plan checkout, and 13 added to the existing
+cancellation suite.
+
+**The migration has not been applied.** `prisma migrate status` shows the
+standing drift condition — `20260815100000_start_otp_minted_in_house` is on the
+shared RDS instance and in no local branch — so `migrate deploy` and
+`migrate dev` were both deliberately not run. Resolving that drift is a
+coordination event with the teammate. The SQL was instead executed against the
+live schema inside a transaction and rolled back, which proves it applies and
+that its constraints bite, with zero net effect on the database.
+
+### Known gaps
+
+1. **A refund of a part-used plan has no route.** `RefundsService` is entered
+   by `bookingId` and always will be. Deliberate, and consistent with how
+   window-E booking refunds work: what a part-used plan is worth back is an ops
+   judgement, not a formula. The plumbing beneath it is ready — a subscription
+   order settles, books to the ledger and correctly skips the booking write.
+2. **`priorityDispatch` is stored and read by nothing.** Shipping the column
+   without the behaviour is honest only because this line exists.
+3. **No notifications.** Nothing tells a customer their coins are about to
+   expire, their plan is about to lapse, or their referral just paid. Three
+   `NotificationTemplate` rows and an `enqueue` call — small, and deliberately
+   out of this pass rather than half-done.
+4. **`admin-analytics.service.ts` still sums `flatPrice` for GMV.** Arguably
+   right for _gross_ merchandise value and arguably not; left alone rather than
+   changed without the question being asked (#67).
+5. **The nightly reconciliation does not rebuild wallet balances.**
+   `rebuildBalance` exists and is exposed as an admin route; module 9's counter
+   rebuild does not call it, so drift self-heals only on request.
+6. **Referral-code counters are never rebuilt** from `Referral`, unlike every
+   other counter here.
+
+### Online plan checkout — added the same day
+
+`Order` now belongs to a booking **or** a subscription: `bookingId` is
+nullable, `subscriptionId` sits beside it, and a CHECK requires exactly one
+(#75). A second port, `SUBSCRIPTION_PORT`, is owned by module 7 and registered
+into by module 16 — the same shape as `SUPPORT_PORT`, so there is no cycle. A
+partial unique index refuses a second _paid_ order per subscription while still
+allowing an unpaid reissue, both probed against the live schema.
+
+### What changed outside module 16's folder
+
+Eight files from the first pass, each a one-line consequence of
+`payableAmount` existing, plus module 7's `Order`, `OrdersService`,
+`RefundsService` and DTO for checkout. All listed in
+[`MODULE_16_LOYALTY_PLAN.md`](MODULE_16_LOYALTY_PLAN.md) §8. The substantive
+ones are in module 7 — the gateway order amount, the cash collected at the
+door, and the reconciliation variance — because charging the list price to a
+customer quoted a discounted one is the worst bug this work could have shipped.
 
 ---
 

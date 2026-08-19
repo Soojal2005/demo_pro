@@ -10,8 +10,13 @@ export class OrderBookingDto {
   @ApiProperty()
   id: string;
 
-  @ApiProperty({ example: 'HB-2026-000123' })
-  bookingNumber: string;
+  @ApiProperty({
+    example: 'booking',
+    description:
+      '`booking` | `subscription`. Which of the two things this payment buys — ' +
+      'they have different success screens.',
+  })
+  bookingNumber: string | null;
 
   @ApiProperty()
   status: string;
@@ -154,8 +159,26 @@ export class CheckoutHandoffDto {
   @ApiProperty({ example: 'INR' })
   currency: string;
 
-  @ApiProperty({ example: 'HB-2026-000123' })
-  bookingNumber: string;
+  @ApiProperty({
+    example: 'booking',
+    description:
+      '`booking` | `subscription`. Which of the two things this payment buys — ' +
+      'the app needs it because they have different success screens.',
+  })
+  purpose: string;
+
+  @ApiProperty({
+    example: 'HB-2026-000123',
+    description: 'Booking number, or the plan name. Show this on the sheet.',
+  })
+  reference: string;
+
+  @ApiProperty({
+    example: 'HB-2026-000123',
+    nullable: true,
+    description: 'Null when `purpose` is `subscription`.',
+  })
+  bookingNumber: string | null;
 
   @ApiPropertyOptional({ nullable: true })
   customerName: string | null;

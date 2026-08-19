@@ -34,6 +34,15 @@ export const ACCOUNT = {
   BANK: 'bank:platform',
   /** Gross takings. */
   REVENUE_BOOKINGS: 'revenue:bookings',
+  /**
+   * Subscription income — **deliberately not** `revenue:bookings`.
+   *
+   * The platform's own share is computed as `revenue:bookings` less
+   * `expense:pro_commission`. Folding plan income into that would inflate the
+   * figure by money no Pro ever worked for, and would make the margin
+   * calculation quietly wrong in the direction that flatters it.
+   */
+  REVENUE_SUBSCRIPTIONS: 'revenue:subscriptions',
   /** Deductions recovered out of a payout. */
   REVENUE_RECOVERIES: 'revenue:recoveries',
   /** What Pros have earned, as it accrues. */
