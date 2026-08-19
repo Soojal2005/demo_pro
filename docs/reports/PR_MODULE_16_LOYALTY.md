@@ -274,33 +274,74 @@ still on RDS and in no branch.
 
 ---
 
-## ⚠️ Before merging — two things
+## Applied and verified against the real database
 
-### 1 · The migrations have **not** been applied
-
-`prisma migrate status` reports three migrations on the shared RDS instance that
-exist in **no branch**:
+Both migrations are **applied** to the shared RDS instance, and the schema was
+checked afterwards rather than assumed:
 
 ```
-20260815100000_start_otp_minted_in_house
-20260817100000_admin_firebase_identity_required
-20260819120000_pro_job_notes_and_aadhaar_back
+tables created:            7/7
+booking columns:           5/5
+backfill:                  16/16 rows, 0 nulls, 0 inconsistent
+loyalty settings seeded:   18/18
+orders.bookingId nullable: YES
+key constraints live:      4/4
 ```
 
-That is a coordination event, not something to resolve unilaterally, so
-`migrate deploy` was deliberately not run. The two migrations in this PR were
-instead executed against the live schema inside a transaction and rolled back,
-which proves they apply and that their constraints bite, with zero effect on
-data.
+The three subscription plans are seeded, so the plans endpoint returns a
+catalogue rather than an empty list.
 
-The third of those drifted migrations shares a timestamp with this branch's
-first one, so ours was renumbered to `20260819140000` to keep ordering
-unambiguous.
+### The live pass — 22/22
 
-**To deploy:** `NODE_ENV=local npx prisma migrate deploy` — `NODE_ENV=local`
-matters, because `.env.production` has an empty `DATABASE_URL`.
+Every e2e suite in this repository mocks Prisma. 1,375 green unit tests
+therefore prove the logic and prove **nothing** about the schema. So this
+branch adds `test/manual/run-loyalty-live.ts`, which writes real rows and
+asserts the database refuses the ones it should — the standard the earlier
+modules met with their cURL runs.
 
-### 2 · Known gaps, stated rather than discovered
+```
+NODE_ENV=local npx tsx test/manual/run-loyalty-live.ts
+→ 22 passed, 0 failed        leftover LIVE-CHECK rows: 0
+```
+
+It covers the overdraft floor, the sign constraint that stops an `earn` from
+debiting, `sourceRef` exactly-once, an unattributed adjustment, all three
+booking arithmetic constraints, self-referral and referred-twice,
+one-live-plan-per-customer, an order belonging to neither subject or to both,
+and a Pro trying to move a job. It also confirms every pre-existing booking
+satisfies `payableAmount = flatPrice − discountAmount`.
+
+Every row it writes is marked `LIVE-CHECK` and deleted in the cleanup block,
+whether the run passes or throws.
+
+---
+
+## ⚠️ Before merging — three things
+
+### 1 · Razorpay has not been exercised
+
+`createForSubscription` calls the real gateway and has never hit the sandbox.
+It reuses module 7's existing `RazorpayClient`, so the transport is proven by
+the booking checkout that already ships — but the subscription path itself is
+unverified against Razorpay. Worth a sandbox run in staging before real cards
+touch it.
+
+### 2 · One migration is still untracked, and no longer warns
+
+`20260819120000_pro_job_notes_and_aadhaar_back` is applied on RDS and exists in
+no branch. Merging `main` brought two of the previous three into git, so the
+drift is down from three to one.
+
+**The remaining one is now invisible:** `prisma migrate status` reports
+"Database schema is up to date!" because Prisma stops listing database-only
+migrations once nothing local is pending. `schema.prisma` still does not
+describe the database — it simply no longer says so. Whoever owns that
+migration should push it.
+
+This branch's own migration was renumbered to `20260819140000` because the
+drifted one shared its timestamp, so ordering stays unambiguous.
+
+### 3 · Known gaps, stated rather than discovered
 
 1. **Refunding a part-used plan has no route.** Deliberate, and consistent with
    window-E booking refunds: what a part-used plan is worth back is an ops
