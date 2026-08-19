@@ -1,0 +1,67 @@
+# Local container stack: the API plus its own Redis.
+#
+#   docker compose up -d --build
+#   curl http://localhost:3001/api/v1/health
+#   docker compose logs -f api
+#   docker compose down
+#
+# Why this file exists rather than a long `docker run`:
+#
+# 1. `--env-file` is a naive KEY=VALUE parser and does NOT strip quotes, while
+#    dotenv does. Pointing it at `.env.local` — whose values are quoted —
+#    delivers a DATABASE_URL that literally begins with `"`, and Prisma then
+#    fails with the nonsense `Can't reach database server at base`. Compose's
+#    `env_file` has the same limitation, so this stack reads `.env.docker`,
+#    which `npm run env:docker` writes with the quotes stripped.
+#
+# 2. `localhost` inside a container is the container. Pointing REDIS_HOST at
+#    localhost gives `ECONNREFUSED 127.0.0.1:6379`. Here Redis is a service on
+#    the compose network, so the host is simply `redis` and there is no
+#    `host.docker.internal` to remember.
+#
+# The database is NOT a service here: this project points at a shared AWS RDS
+# instance, and DATABASE_URL comes through from .env.docker unchanged.
+
+services:
+  api:
+    build:
+      context: .
+      target: production
+    image: homingo-backend:local
+    container_name: homingo-api
+    # node as PID 1 does not reap zombies.
+    init: true
+    ports:
+      # 3001 on the host, because the local dev server usually holds 3000.
+      - '3001:3000'
+    env_file:
+      - .env.docker
+    environment:
+      # These override .env.docker and are the container-specific truths.
+      # Redis is a sibling service, not the host.
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      # The image bakes NODE_ENV=production, under which slide.config refuses
+      # OTP_PROVIDER=mock. Local container runs want the mock, so the env is
+      # named honestly instead.
+      NODE_ENV: local
+      HOST: 0.0.0.0
+      PORT: '3000'
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: homingo-redis
+    # Not published by default. Uncomment to inspect it with redis-cli from
+    # the host; 6380 avoids clashing with a Redis already on 6379.
+    # ports:
+    #   - '6380:6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped

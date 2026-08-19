@@ -9,10 +9,12 @@ export default tseslint.config(
     ignores: [
       'eslint.config.mjs',
       // Standalone operator scripts run with plain `node` against a live
-      // database — deliberately outside tsconfig, so the type-checked rules
-      // have no project to resolve them against.
+      // database or the shell — deliberately outside tsconfig, so the
+      // type-checked rules have no project to resolve them against.
       'test/manual/**/*.js',
       'test/manual/**/*.mjs',
+      'scripts/**/*.js',
+      'scripts/**/*.mjs',
     ],
   },
   eslint.configs.recommended,

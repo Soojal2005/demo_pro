@@ -26,7 +26,11 @@
     "db:seed": "cross-env NODE_ENV=local prisma db seed",
     "db:seed:catalog": "cross-env NODE_ENV=local tsx prisma/seed.ts --catalog-only",
     "db:check": "cross-env NODE_ENV=local tsx src/database/check-connection.ts",
-    "prepare": "husky"
+    "prepare": "husky",
+    "env:docker": "node scripts/write-docker-env.mjs",
+    "docker:up": "node scripts/write-docker-env.mjs && docker compose up -d --build",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f api"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1105.0",
