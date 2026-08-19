@@ -219,6 +219,61 @@ cancellation suite.
 
 ---
 
+## This branch is already merged with `main`
+
+`main` moved 10 commits ahead while this was being built — the admin dashboard,
+the end-to-end booking-flow fixes, the customer and Pro booking view layers, and
+two migrations that had until then existed only on the shared database.
+`origin/main` was merged in, so this branch is **0 behind**.
+
+**Reviewers: the interesting part of that merge is not the conflict.** Git found
+exactly one, a duplicate import. The work was in the six files it merged
+_cleanly and wrongly_.
+
+`flatPrice` and `payableAmount` were the same number until this module, and are
+not any more. Main's new code was written before that distinction existed and
+reads `flatPrice` in places that mean "money". Each of these compiled, passed
+every existing test, and was wrong:
+
+| File                         | What it would have shipped                                                                                        |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `customer-booking.view.ts`   | ₹500 on the card for a booking the customer paid ₹350 for                                                         |
+| `pro-booking.view.ts`        | A comment telling the Pro app `flatPrice` is "the exact sum to collect" — a Pro demanding ₹500 where ₹350 is owed |
+| `admin-analytics.service.ts` | Commission subtracted from `flatPrice`, overstating the platform margin on every discounted booking               |
+| booking CSV export           | One column named `amount` holding the pre-discount price                                                          |
+| `BookingDto`                 | Support unable to see what a discounted booking actually charged                                                  |
+
+Three regression tests were added for these, because **the entire existing suite
+was blind to all of them**.
+
+### Where this PR changes code owned by someone else
+
+The corrections above touch files from `main`. Two calls worth reviewing
+explicitly rather than skimming:
+
+- **GMV deliberately stays gross** (`flatPrice`). It is the catalogue value of
+  what was sold, and keeping it comparable across months is the point of the
+  acronym. `discountGiven` and `netRevenue` were added as the bridge, so the gap
+  between GMV and platform revenue is a reported figure rather than something
+  finance has to chase.
+- **The commission report's `grossPrice` was left on `flatPrice`**, because
+  commission _is_ computed against the list price (decision #71) and that column
+  sits beside `proAmount`. `chargedAmount` was added next to it so the real take
+  is not left to be inferred.
+
+Where the two sides disagreed on style rather than correctness, **main won**: the
+reschedule route now returns `CustomerBookingDetailDto` and re-reads through
+`viewOf`, matching every other customer route.
+
+### A side effect worth knowing
+
+Main brought `start_otp_minted_in_house` and `admin_firebase_identity_required`
+into git, which **cuts the untracked drift on the shared database from three
+migrations to one**. Only `20260819120000_pro_job_notes_and_aadhaar_back` is
+still on RDS and in no branch.
+
+---
+
 ## ⚠️ Before merging — two things
 
 ### 1 · The migrations have **not** been applied
