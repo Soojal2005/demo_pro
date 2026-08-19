@@ -22,6 +22,7 @@ import type {
   CustomerBookingDetailDto,
   CustomerBookingDto,
 } from './dto/customer-booking.dto';
+import { PRO_JOB_INCLUDE, type ProJobRow } from './pro-booking.view';
 import { DISPATCH_PORT, type DispatchPort } from './ports/dispatch.port';
 import { PAYMENTS_PORT, type PaymentsPort } from './ports/payments.port';
 import {
@@ -328,11 +329,37 @@ export class BookingsService {
     });
   }
 
-  listForPro(proId: string): Promise<Booking[]> {
+  /**
+   * The Pro's live work, resolved into what a job card actually draws.
+   *
+   * `PRO_JOB_INCLUDE` rather than a bare row: the ids alone cannot tell a Pro
+   * where to go, and no other Pro-facing route resolves a customer address.
+   * See `pro-booking.view.ts`.
+   */
+  listForPro(proId: string): Promise<ProJobRow[]> {
     return this.prisma.booking.findMany({
       where: { proId, status: { in: LIVE_STATUSES } },
       orderBy: { slotStartAt: 'asc' },
+      include: PRO_JOB_INCLUDE,
     });
+  }
+
+  /**
+   * One assigned job, with everything the Pro app needs to render it.
+   *
+   * Separate from `getAssignedBooking`, which stays a bare row because the
+   * lifecycle service compares against `startOtpCode` and has no use for the
+   * joins. Same ownership rule: someone else's booking reads as a 404.
+   */
+  async getProJob(proId: string, bookingId: string): Promise<ProJobRow> {
+    const booking = await this.prisma.booking.findUnique({
+      where: { id: bookingId },
+      include: PRO_JOB_INCLUDE,
+    });
+    if (!booking || booking.proId !== proId) {
+      throw apiError('Booking not found', HttpStatus.NOT_FOUND);
+    }
+    return booking;
   }
 
   async getOwnedBooking(

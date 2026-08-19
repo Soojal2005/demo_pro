@@ -1,7 +1,7 @@
 # Homingo Pro App — backend flow guide
 
 **Audience:** the engineer building the Professional (Pro) mobile app.
-**Backend snapshot:** 18 August 2026.
+**Backend snapshot:** 19 August 2026.
 **Scope:** everything the backend exposes to a `pro` actor, and nothing else.
 
 This document explains what the Pro app can do, in the order a Pro actually does
@@ -322,14 +322,45 @@ booking then carries:
 | `acknowledgedAt`    | Set once acknowledged                  |
 | `assignmentOutcome` | `pending_ack`, then resolved           |
 
-> ### ⚠️ There are no push notifications yet
->
-> The notifications module does not exist. `notifiedAt` is stamped, but nothing
-> is sent — `pushToken` is stored on the Pro row and never read.
->
-> **The Pro app must poll `GET /pros/me/bookings`** (every 15–30 s while on duty,
-> plus on app foreground) to discover a new assignment. Design the home screen
-> around polling, and expect a push integration later.
+#### Push, and why you still poll
+
+Module 12 is built: a durable outbox, a worker draining it about once a second,
+and FCM/APNs delivery with WhatsApp and SMS fallbacks for critical templates.
+`dispatch.assignment_offered` reaches the Pro the moment dispatch picks them.
+
+Register the device token in one of two places:
+
+```
+POST /auth/otp/verify   { …, "pushToken": "…", "pushPlatform": "android" | "ios" }
+PUT  /notifications/push-token   { "token": "…", "platform": "android" | "ios" }
+DELETE /notifications/push-token → 204          (on logout)
+```
+
+`pushToken` and `pushPlatform` on verify must be sent together or neither — one
+without the other is a 400.
+
+**One token per Pro.** Registering on a second device makes the first
+unreachable, so the app must re-register on every launch. US-6.20 is explicit
+that a Pro logged in on two phones silently times out on assignments they never
+saw.
+
+Every push carries the same `data` block, and it is the whole deep-link
+contract:
+
+| Key              | Present        | Use                            |
+| ---------------- | -------------- | ------------------------------ |
+| `notificationId` | always         | `POST /notifications/:id/read` |
+| `eventKey`       | always         | Which screen to open           |
+| `bookingId`      | booking events | Which job                      |
+
+Events a Pro receives: `dispatch.assigned` (a new assignment — open the job and
+start the ack countdown), `booking.acknowledged`, `booking.completed`,
+`booking.cancelled`, `commission.paid`, `commission.failed`.
+
+**Still poll `GET /pros/me/bookings`** — every 15–30 s on duty and on every
+foreground. Push is a delivery mechanism, not a guarantee: the token can be
+stale, the OS can drop it, and a missed `ackDeadlineAt` costs a job. Treat push
+as "check now", never as the only path to knowing.
 
 ### 5.3 Acknowledge
 
@@ -390,6 +421,47 @@ POST /pros/me/bookings/:id/complete    { lat?, lng? }            → booking
 `GET /pros/me/bookings` returns only **live** work: `created`, `awaiting_payment`,
 `assigning`, `assigned`, `en_route`, `arrived`, `started`. Completed and cancelled
 jobs are history — read them from `GET /pros/me/jobs` (§9).
+
+### 6.2a What a job payload contains
+
+Every route above that answers with a job returns the booking row **plus** three
+resolved objects. They exist because the row alone carries `addressId`,
+`customerId` and `serviceId` and nothing else, and no other Pro-facing route can
+turn those into text.
+
+```jsonc
+{
+  "id": "…",
+  "bookingNumber": "HMG-000812",
+  "status": "assigned",
+  "flatPrice": "599.00",
+  "paymentMode": "cash",
+  "slotStartAt": "…",
+  "ackDeadlineAt": "…",
+  "arrivedAt": null,
+  "startedAt": null,
+
+  "service": { "name": "Deep clean — 2BHK", "durationMinutes": 120 },
+  "address": {
+    "addressLine": "Flat 402, Sunrise Apartments, Vijay Nagar",
+    "landmark": "Opposite the water tank",
+    "pinLat": 22.7196,
+    "pinLng": 75.8577,
+  },
+  "customer": { "fullName": "Asha Menon", "ratingSum": 14, "ratingCount": 3 },
+}
+```
+
+- **Route to `pinLat`/`pinLng`**, not to the street text. The pin is what the
+  customer actually dropped; the text is what you read out to a security guard.
+- `landmark` is what finds the door — show it beside the address, not buried.
+- **There is no customer phone number, here or anywhere.** Neither side sees the
+  other's (US-4.8); the booking chat (§6.5) is the entire substitute. Do not
+  build a call button.
+- `customer.ratingCount: 0` is the normal case and means nothing has been
+  reported — not that the household is a risk. The tags behind these counters
+  are on `GET customer-advisory` (§8).
+- All three objects are nullable in the schema. Render defensively.
 
 ### 6.3 The start code — the one screen to get right
 
@@ -702,7 +774,61 @@ POST  /pros/me/training/:moduleId/quiz     { answers: { "q1": "b", "q2": ["a","c
 
 ---
 
-## 12. Screen inventory → endpoints
+## 12. Safety and support
+
+Module 11. The Pro gets **the same six routes the customer gets** — deliberately
+not a thinner version of them, because a Pro app with a weaker safety feature
+than the customer app is a statement about whose safety counts.
+
+### 12.1 SOS
+
+```
+POST /pros/me/sos   { bookingId?, lat?, lng?, note? }   → SosAlert
+GET  /pros/me/sos                                       → SosAlert[]
+```
+
+- **Everything in the body is optional**, including the coordinates. A phone
+  that cannot get a fix must still be able to raise an alert; a missing pin
+  degrades the response, refusing the alert defeats the feature. Never block the
+  button on a location permission.
+- This is **not a ticket** and never enters the ticket queue. On-duty admins are
+  notified directly.
+- The alert freezes a context snapshot at the moment the button is pressed — the
+  booking state then, not when ops opens it.
+- Statuses: `open → acknowledged → resolved | false_alarm`. `false_alarm` is an
+  honest outcome, not a failure — do not make the Pro feel they must justify it.
+- One tap, reachable from the job screen and the home screen. Do not bury it
+  behind a confirm dialog with a paragraph of text.
+
+### 12.2 Support tickets
+
+```
+POST /pros/me/support/tickets              { category, subject, body, bookingId?, attachmentKey? }
+GET  /pros/me/support/tickets              → tickets I raised
+GET  /pros/me/support/tickets/:id          → one, with its thread
+POST /pros/me/support/tickets/:id/messages { body, attachmentKey? }
+```
+
+- Categories a Pro may raise: `billing`, `quality`, `dispute`, `app_issue`.
+  **`no_start` is rejected** — it is system-raised only.
+- `bookingId` is required for `dispute`.
+- There is **no priority field.** Ops sets it. Every self-service ticket would
+  otherwise be urgent, which is the same as none of them being.
+- Statuses: `open`, `in_progress`, `escalated`, `resolved`, `closed`. Replies are
+  accepted on all but `closed`.
+- Notifications `support.ticket_replied` and `support.ticket_resolved` reach the
+  Pro on the channels in §5.2.
+
+> **The no-start ticket is invisible, by design.** When a Pro marks arrival and
+> the grace window expires without a start, the system opens an **internal** ops
+> case about that job. `GET /pros/me/support/tickets` excludes it and fetching it
+> by id returns `404`, not `403`. Do not build any UI that hints it exists — the
+> legitimate causes are overwhelmingly benign (nobody home, building security,
+> wrong address) and surfacing it reads as an accusation.
+
+---
+
+## 13. Screen inventory → endpoints
 
 | Screen                              | Reads                                                                                                        | Writes                                                       |
 | ----------------------------------- | ------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------ |
@@ -730,47 +856,64 @@ POST  /pros/me/training/:moduleId/quiz     { answers: { "q1": "b", "q2": ["a","c
 | Standing & history                  | `/standing`, `/jobs`, `/ratings`                                                                             | —                                                            |
 | Profile                             | `GET /pros/me`                                                                                               | `PATCH /pros/me`, profile-photo pair                         |
 | Bank accounts                       | `GET /pros/me/bank-accounts`                                                                                 | `POST` / `PATCH`                                             |
+| SOS (always reachable)              | `GET /pros/me/sos`                                                                                           | `POST /pros/me/sos`                                          |
+| Support tickets / thread            | `/support/tickets`, `/support/tickets/:id`                                                                   | `POST /support/tickets`, `…/:id/messages`                    |
+| App launch (every time)             | —                                                                                                            | `PUT /notifications/push-token`                              |
 
 ---
 
-## 13. Known gaps — read before estimating
+## 14. Known gaps — read before estimating
 
 These are backend limitations as of this snapshot, not app bugs. Plan around them
 and raise them with the backend team.
 
-1. **The job payload does not contain the address, the customer, or the service
-   name.** `GET /pros/me/bookings[/:id]` returns the booking row: `addressId`,
-   `customerId`, `serviceId` — ids only. There is no Pro-facing endpoint that
-   resolves a customer address, so **the app currently cannot show the Pro where
-   to go or who to meet.** The service name can be fetched from the public
-   `GET /catalog/services/:id`; the address and customer cannot. This blocks the
-   job card and needs a backend change (a Pro booking view that includes
-   `address`, the customer's first name, and `service.name`).
-2. **No push notifications.** Poll (§5.2). `pushToken` is stored and never read,
-   and there is no route for the app to register one.
-3. **No duty toggle.** `isAvailable` is admin-only; there is no endpoint for the
-   Pro to go online/offline.
-4. **The Pro cannot see their own assigned services/skills.** `ProService` rows
+1. **No duty toggle.** `isAvailable` is admin-only; there is no endpoint for the
+   Pro to go online/offline. Say so on screen rather than showing a switch that
+   does nothing.
+2. **The Pro cannot see their own assigned services/skills.** `ProService` rows
    drive the curriculum and dispatch eligibility but have no Pro-facing read.
-5. **No Pro-facing document view URL.** Uploaded KYC files cannot be read back by
-   the Pro; only admins can view them.
-6. **No websocket for the Pro.** The tracking gateway (`/tracking` namespace)
-   serves the customer's map. Everything on the Pro side is polled.
-7. **`BookingDto` in Swagger is thinner than the real response.** The runtime
-   response is the booking row (minus the start code, which is stripped from
-   every Pro surface). Generate from OpenAPI, but expect extra fields.
+   `GET /admin/pros/:id/services` exists; the `/pros/me` mirror does not.
+3. **`GET /pros/me` does not expose an active-service count**, so the app cannot
+   tell a Pro _which_ of the three dispatchability gates (approved / on duty /
+   has an active service) is holding them back — only that something is.
+4. **No Pro-facing document view URL.** Uploaded KYC files cannot be read back
+   by the Pro; only admins can view them. An upload confirmation screen cannot
+   show a thumbnail of what was sent.
+5. **No websocket for the Pro.** The tracking gateway (`/tracking` namespace)
+   serves the customer's map. Everything on the Pro side is push-or-poll.
+6. **Some `/pros/me` reads carry no response DTO**, so a generated client types
+   their `data` as `unknown`: `/jobs` is annotated with the wrong DTO
+   (`ProLocationDto`), and `/ratings`, `/earnings`, `/commissions` have none.
+   Hand-write those four models until the annotations are fixed.
+7. **`Booking.routeTrail` is null everywhere** — nothing can draw a completed
+   route yet (module 13, instalment 2).
+8. **No attachment presign route for support tickets.** `attachmentKey` is
+   accepted on a ticket and a reply, but the endpoint that issues the key was
+   cut from the module 11 MVP. Send tickets without attachments for now.
+
+### Closed since the first edition of this document
+
+- ~~The job payload contains no address, customer or service name~~ — fixed;
+  see §6.2a. Every Pro job route now resolves all three.
+- ~~No push notifications~~ — module 12 is built; see §5.2.
+- ~~No safety or support surface~~ — module 11 is built; see §12.
 
 ---
 
-## 14. Integration checklist
+## 15. Integration checklist
 
 - [ ] One API client with the envelope unwrapped and `errors[].code` surfaced
 - [ ] Token refresh on 401, single-flight, with logout on refresh failure
 - [ ] A route guard driven by `status` + suspension (§3), re-checked on resume
 - [ ] Reusable three-step uploader (§4.1) for KYC, profile photo and job photos
-- [ ] Polling: jobs while on duty, messages while a job screen is open
+- [ ] Push token registered on **every** app launch, cleared on logout (§5.2)
+- [ ] Push `data.eventKey` routed to a screen; `bookingId` deep-links the job
+- [ ] Polling kept even with push working: jobs on duty, messages on a job screen
 - [ ] Location loop that starts/stops with `isAvailable` and never hammers a 403
+- [ ] Job card driven by `address.pinLat/pinLng` for routing, `landmark` shown
 - [ ] Money rendered from strings, never parsed to float
 - [ ] `salaryNote` visible on every earnings screen
 - [ ] Completion blocked in the UI until a `completion` photo exists
-- [ ] Copy that never promises accept/decline, cancel, or a duty switch
+- [ ] SOS reachable in one tap and never blocked on a location permission
+- [ ] Copy that never promises accept/decline, cancel, a duty switch, or a call
+      button to the customer

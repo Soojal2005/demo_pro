@@ -151,9 +151,25 @@ export class SosService {
   async listForAdmin(status?: string): Promise<AlertWithResponseTime[]> {
     const alerts = await this.prisma.sosAlert.findMany({
       where: status ? { status } : {},
-      // Open first, then oldest first inside each group: an alert that has
-      // been waiting eleven minutes outranks one raised thirty seconds ago.
-      orderBy: [{ status: 'asc' }, { raisedAt: 'asc' }],
+      /*
+       * Open first, then oldest first inside each group: an alert that has
+       * been waiting eleven minutes outranks one raised thirty seconds ago.
+       *
+       * Ordered on the timestamps, not on `status`. Sorting the status column
+       * ascending is alphabetical — `acknowledged`, `false_alarm`, `open`,
+       * `resolved` — which put open alerts *third*, beneath ones already
+       * closed. On a queue somebody presses a panic button into, that is the
+       * one row order that must not happen.
+       *
+       * Unresolved rows have a null `resolvedAt` and sort first; among those,
+       * a null `acknowledgedAt` means nobody has looked yet, so open outranks
+       * acknowledged. Closed alerts fall to the bottom.
+       */
+      orderBy: [
+        { resolvedAt: { sort: 'asc', nulls: 'first' } },
+        { acknowledgedAt: { sort: 'asc', nulls: 'first' } },
+        { raisedAt: 'asc' },
+      ],
       take: 200,
     });
     return alerts.map((alert) => this.withResponseTime(alert));

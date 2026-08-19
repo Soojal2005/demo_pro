@@ -440,3 +440,36 @@ describe('what the raiser can see', () => {
     });
   });
 });
+
+describe('the admin queue order', () => {
+  /**
+   * The trap this guards. `orderBy: { status: 'asc' }` reads as "open first"
+   * and is alphabetical — `acknowledged`, `false_alarm`, `open`, `resolved` —
+   * so open alerts sorted *third*, beneath ones already closed. On a queue
+   * somebody presses a panic button into, that is the one order that must not
+   * happen.
+   *
+   * Asserted on the query, because the mock does not sort for us.
+   */
+  it('puts unacknowledged alerts above acknowledged ones, and both above closed', async () => {
+    const { service, prisma } = build();
+
+    await service.listForAdmin();
+
+    expect(prisma.sosAlert.findMany.mock.calls.at(-1)![0].orderBy).toEqual([
+      { resolvedAt: { sort: 'asc', nulls: 'first' } },
+      { acknowledgedAt: { sort: 'asc', nulls: 'first' } },
+      { raisedAt: 'asc' },
+    ]);
+  });
+
+  it('still narrows to one status when asked', async () => {
+    const { service, prisma } = build();
+
+    await service.listForAdmin('open');
+
+    expect(prisma.sosAlert.findMany.mock.calls.at(-1)![0].where).toEqual({
+      status: 'open',
+    });
+  });
+});
