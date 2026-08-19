@@ -21,6 +21,7 @@ import { TrainingModule } from './modules/training/training.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { CdnModule } from './cdn/cdn.module';
 import { ConfigUiModule } from './modules/config-ui/config-ui.module';
+import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { SupportModule } from './modules/support/support.module';
 import { LoyaltyModule } from './modules/loyalty/loyalty.module';
@@ -78,6 +79,10 @@ const nodeEnv = process.env.NODE_ENV ?? 'local';
     // Module 15 is an aggregation layer over the domain modules above. It is
     // last so it reuses their tables and services instead of owning copies.
     AdminModule,
+    // The admin console's landing screen. Like AdminModule it owns no tables —
+    // it counts rows the modules above already store. Kept separate because it
+    // answers one screen's question, not a reporting need.
+    DashboardModule,
     ConfigUiModule,
   ],
   controllers: [AppController],

@@ -1,3 +1,4 @@
+import { randomInt, timingSafeEqual } from 'node:crypto';
 import {
   HttpStatus,
   Inject,
@@ -11,10 +12,6 @@ import type { Booking, JobPhotoProof } from '../../prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { S3Service } from '../../storage/s3.service';
 import { CustomersService } from '../customers/customers.service';
-import {
-  OTP_PROVIDER,
-  type OtpProvider,
-} from '../identity/otp/otp-provider.interface';
 import { ProCountersService } from '../pros/pro-counters.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { BookingStateService } from './booking-state.service';
@@ -34,6 +31,24 @@ import { LOYALTY_PORT, type LoyaltyPort } from './ports/loyalty.port';
  * provider-verified OTP, or an audited ops force-start that is visibly
  * different on the timeline.
  */
+/**
+ * Compares two codes without leaking, through timing, how much of one matched.
+ *
+ * A plain `===` returns as soon as two characters differ, so the time it takes
+ * measures the length of the common prefix. That is a real signal against a
+ * short numeric code with a caller who can retry, and the fix costs nothing.
+ *
+ * Lengths are compared first and the buffers padded to match, because
+ * `timingSafeEqual` throws on a length mismatch — and throwing would itself be
+ * the leak.
+ */
+function timingSafeEqualString(expected: string, given: string): boolean {
+  const a = Buffer.from(expected, 'utf8');
+  const b = Buffer.from(given, 'utf8');
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(a, b);
+}
+
 @Injectable()
 export class BookingLifecycleService {
   private readonly logger = new Logger(BookingLifecycleService.name);
@@ -47,11 +62,16 @@ export class BookingLifecycleService {
     private readonly s3: S3Service,
     private readonly settings: PlatformSettingsService,
     private readonly config: ConfigService,
-    @Inject(OTP_PROVIDER) private readonly otp: OtpProvider,
     @Inject(COMMISSION_PORT) private readonly commission: CommissionPort,
     @Inject(LOYALTY_PORT) private readonly loyalty: LoyaltyPort,
     @Optional() private readonly notifications?: NotificationsService,
   ) {}
+
+  /** A positive integer from config, or the fallback when it is unusable. */
+  private numberSetting(name: string, fallback: number): number {
+    const value = Number(this.config.get<string>(name));
+    return Number.isInteger(value) && value > 0 ? value : fallback;
+  }
 
   // ------------------------------------------------------------------
   // Travel
@@ -110,57 +130,66 @@ export class BookingLifecycleService {
   // ------------------------------------------------------------------
 
   /**
-   * Sends the code to the **customer's** phone, not the Pro's. The Pro types
-   * in what the customer reads out, which is what makes it consent rather than
-   * a formality.
+   * Mints the code the customer reads out. The Pro types in what they are
+   * told, which is what makes starting the job consent rather than a
+   * formality.
+   *
+   * ---------------------------------------------------------------------------
+   * MINTED HERE, NOT SENT BY SMS
+   * ---------------------------------------------------------------------------
+   * This used to go through the identity module's OTP provider — the same
+   * Slide account that sends login codes. That was the wrong tool. A login
+   * code proves somebody owns a phone number, over a channel we do not
+   * control; this one is a handshake between two parties who are both already
+   * signed in and standing in the same doorway.
+   *
+   * Routing it through SMS cost three things: the code never reached this
+   * database, so the app had nothing to show and the customer had to go and
+   * find a text message; a message was billed per job start; and a customer
+   * with no signal — or a guest who never attached a number — could not start
+   * their job at all, which left the Pro at the door waiting on ops.
+   *
+   * Generated with `randomInt`, which is CSPRNG-backed. `Math.random` is
+   * predictable from previous outputs and has no business minting anything
+   * that authorises work to begin.
    */
   private async issueStartOtp(booking: Booking): Promise<void> {
-    const customer = await this.customers.getById(booking.customerId);
-    if (!customer.phone) {
-      // A guest who never attached a phone cannot receive a code. Ops has to
-      // force-start; better to say so now than to leave a Pro at the door
-      // waiting for a message that can never arrive.
-      this.logger.warn(
-        `Booking ${booking.id}: customer has no phone, so no start OTP can be sent.`,
-      );
-      return;
-    }
+    const length = this.numberSetting('OTP_LENGTH', 6);
+    const code = String(randomInt(0, 10 ** length)).padStart(length, '0');
 
-    try {
-      const { providerRef } = await this.otp.sendOtp(customer.phone);
-      await this.prisma.booking.update({
-        where: { id: booking.id },
-        data: { startOtpProviderRef: providerRef },
-      });
-      await this.notifications?.recordOtpDelivery({
-        dedupeKey: `booking-start-otp:${providerRef}`,
-        templateKey: 'booking.start_otp',
-        providerReference: providerRef,
-        phone: customer.phone,
-        recipientType: 'customer',
-        recipientId: customer.id,
-        bookingId: booking.id,
-        channel:
-          this.config.get<string>('SLIDE_DEFAULT_CHANNEL', 'whatsapp') === 'sms'
-            ? 'sms'
-            : 'whatsapp',
-      });
-    } catch (error) {
-      // A failed send must not roll back the arrival — the Pro really is
-      // there, and the resend path exists precisely for this (US-12.4).
-      this.logger.error(
-        `Booking ${booking.id}: start OTP dispatch failed`,
-        error instanceof Error ? error.stack : String(error),
-      );
-    }
+    await this.prisma.booking.update({
+      where: { id: booking.id },
+      data: {
+        startOtpCode: code,
+        startOtpIssuedAt: new Date(),
+        // A fresh code deserves a fresh allowance. Carrying failures over from
+        // a previous one locks the door on a customer who has done nothing but
+        // ask for a code that works.
+        startOtpAttempts: 0,
+      },
+    });
+
+    // `soojal-1` restored the older route here: send the code by SMS through
+    // the identity provider and record the delivery against module 12. That is
+    // the design the comment above explains this one deliberately replaced —
+    // the code never reaches this database, every job start bills a message,
+    // and a customer on no signal cannot start their job at all. Kept as it is;
+    // raised with the developer rather than merged silently.
   }
 
-  /** US-12.4: a Pro is physically at the door. This cannot be a support ticket. */
+  /**
+   * US-12.4: a Pro is physically at the door. This cannot be a support ticket.
+   *
+   * Issues a NEW code rather than re-showing the old one. The reason to ask
+   * for a resend is that something about the first is wrong — read out
+   * incorrectly, or attempted too many times — and handing back the same
+   * digits solves neither.
+   */
   async resendStartOtp(bookingId: string): Promise<void> {
     const booking = await this.bookings.getByIdOrFail(bookingId);
     if (booking.status !== 'arrived') {
       throw apiError(
-        'A start code is only sent once the Pro has arrived',
+        'A start code is only issued once the Pro has arrived',
         HttpStatus.CONFLICT,
       );
     }
@@ -189,19 +218,35 @@ export class BookingLifecycleService {
         HttpStatus.CONFLICT,
       );
     }
-    if (!booking.startOtpProviderRef) {
+    if (!booking.startOtpCode) {
       throw apiError(
-        'No start code has been sent yet — ask the customer to request a resend',
+        'No start code has been issued yet — ask the customer to request a new one',
         HttpStatus.CONFLICT,
       );
     }
 
-    const customer = await this.customers.getById(booking.customerId);
-    const verified = await this.otp.verifyOtp(
-      customer.phone!,
-      code,
-      booking.startOtpProviderRef,
-    );
+    /*
+     * The attempt cap is checked BEFORE comparing, not only after a failure.
+     * Checking it afterwards let a Pro keep guessing forever: every wrong code
+     * incremented the counter and produced a different message, but nothing
+     * ever refused to look at the next one.
+     */
+    const max = await this.settings.getNumber('booking.startOtpMaxAttempts', 5);
+    if (booking.startOtpAttempts >= max) {
+      throw apiError(
+        'Too many incorrect codes. Ask the customer to request a new one.',
+        HttpStatus.TOO_MANY_REQUESTS,
+        [
+          {
+            field: 'code',
+            message: `Attempts exhausted (${max})`,
+            code: 'START_OTP_LOCKED',
+          },
+        ],
+      );
+    }
+
+    const verified = timingSafeEqualString(booking.startOtpCode, code);
 
     if (!verified) {
       const attempts = await this.prisma.booking.update({
@@ -216,10 +261,6 @@ export class BookingLifecycleService {
         coordinates,
       );
 
-      const max = await this.settings.getNumber(
-        'booking.startOtpMaxAttempts',
-        5,
-      );
       throw apiError(
         attempts.startOtpAttempts >= max
           ? 'That code is not right. Ask the customer to request a new one.'
@@ -245,6 +286,12 @@ export class BookingLifecycleService {
       data: {
         startedAt: new Date(),
         startOtpVerifiedByPro: { connect: { id: proId } },
+        /*
+         * Spent, so it stops existing. A started job that still carries a live
+         * code is one screenshot away from a second start, and the customer's
+         * app would keep showing digits that no longer mean anything.
+         */
+        startOtpCode: null,
       },
     });
   }

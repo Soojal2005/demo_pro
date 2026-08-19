@@ -5,6 +5,7 @@ import { AdminCatalogController } from './admin-catalog.controller';
 import { AdminCatalogService } from './admin-catalog.service';
 import { CatalogController } from './catalog.controller';
 import { CatalogService } from './catalog.service';
+import { CatalogueController } from './catalogue.controller';
 import { ServiceCatalogController } from './service-catalog.controller';
 import { ServiceCatalogService } from './service-catalog.service';
 
@@ -23,6 +24,7 @@ import { ServiceCatalogService } from './service-catalog.service';
   imports: [IdentityModule, forwardRef(() => ProsModule)],
   controllers: [
     CatalogController,
+    CatalogueController,
     ServiceCatalogController,
     AdminCatalogController,
   ],

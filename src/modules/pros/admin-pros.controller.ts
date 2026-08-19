@@ -23,6 +23,9 @@ import type {
   ProService,
 } from '../../prisma/client';
 import { PermissionCode } from '../identity/constants/permission-code';
+import { AdminProQueryDto } from './dto/admin-pro-query.dto';
+import { AdminApplicationQueryDto } from './dto/admin-application-query.dto';
+import type { Paged } from '../../common/dto/paged-query.dto';
 import { RequirePermissions } from '../identity/decorators/require-permissions.decorator';
 import { CityScopedResource } from '../identity/decorators/city-scoped-resource.decorator';
 import { CityScopeGuard } from '../identity/guards/city-scope.guard';
@@ -68,17 +71,50 @@ export class AdminProsController {
 
   @Get('pro-applications')
   @RequirePermissions(PermissionCode.PRO_APPLICATION_REVIEW)
-  @ApiOperation({ summary: 'List onboarding applications' })
+  @ApiOperation({
+    summary: 'List onboarding applications',
+    description:
+      'Paged, longest-waiting first — this is a queue rather than an archive. ' +
+      'Returns `{ data, meta }`; a cap here would leave applications nobody ' +
+      'ever sees, with the applicants waiting and no sign of why.',
+  })
   @ApiOkEnvelope(ProApplicationDto, { isArray: true })
   @ApiErrorEnvelope(HttpStatus.FORBIDDEN)
   listApplications(
-    @Query('status') status?: string,
+    @Query() query: AdminApplicationQueryDto,
     @CurrentUser() actor?: AuthenticatedUser,
-  ): Promise<ProApplicationWithApplicant[]> {
+  ): Promise<Paged<ProApplicationWithApplicant>> {
     return this.applicationsService.findAll(
-      { queueStatus: status },
+      {
+        search: query.search,
+        queueStatus: query.status,
+        page: query.page,
+        limit: query.limit,
+      },
       actor?.cityScope,
     );
+  }
+
+  @Get('pro-applications/:id')
+  @CityScopedResource('proApplication')
+  @RequirePermissions(PermissionCode.PRO_APPLICATION_REVIEW)
+  @ApiOperation({
+    summary: 'One onboarding application',
+    description:
+      'A detail view needs its own read. Finding the row inside the list only ' +
+      'worked while the list was unpaged; with paging it returns nothing for ' +
+      'anything past the first page.',
+  })
+  @ApiOkEnvelope(ProApplicationDto)
+  @ApiErrorEnvelope(
+    HttpStatus.UNAUTHORIZED,
+    HttpStatus.FORBIDDEN,
+    HttpStatus.NOT_FOUND,
+  )
+  getApplication(
+    @Param('id') id: string,
+  ): Promise<ProApplicationWithApplicant> {
+    return this.applicationsService.findOne(id);
   }
 
   @Patch('pro-applications/:id/verify-document')
@@ -156,24 +192,20 @@ export class AdminProsController {
 
   @Get('pros')
   @RequirePermissions(PermissionCode.PRO_MODERATE)
-  @ApiOperation({ summary: 'List Pros (roster view)' })
+  @ApiOperation({
+    summary: 'List Pros (roster view)',
+    description:
+      '`search` matches name, employee code or phone in the database. The ' +
+      'list is capped, so a console filtering the returned page instead would ' +
+      'silently find nothing for every Pro past the cap.',
+  })
   @ApiOkEnvelope(ProDto, { isArray: true })
   @ApiErrorEnvelope(HttpStatus.FORBIDDEN)
   findMany(
-    @Query('cityId') cityId?: string,
-    @Query('isAvailable') isAvailable?: string,
-    @Query('status') status?: string,
+    @Query() query: AdminProQueryDto,
     @CurrentUser() actor?: AuthenticatedUser,
   ): Promise<Pro[]> {
-    return this.prosService.findMany(
-      {
-        cityId,
-        isAvailable:
-          isAvailable === undefined ? undefined : isAvailable === 'true',
-        status,
-      },
-      actor?.cityScope,
-    );
+    return this.prosService.findMany(query, actor?.cityScope);
   }
 
   @Patch('pros/:id/profile')

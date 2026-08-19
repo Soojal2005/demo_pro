@@ -54,6 +54,93 @@ const orphan = {
 };
 
 describe('ServiceCatalogService', () => {
+  /*
+   * The customer app's opening payload. It asked for `/catalogue` from day one
+   * and the route did not exist, so `fetchCatalogue` — which never throws —
+   * fell through to the bundled seed file on every launch. The app looked
+   * entirely normal and only failed at checkout, where the seed's slug keys
+   * were rejected as "serviceId must be a UUID".
+   */
+  describe('getCatalogue', () => {
+    const svc = (id: string, categoryId: string) => ({
+      id,
+      categoryId,
+      name: id,
+      description: null,
+      flatPrice: { toString: () => '699.00' },
+      durationMinutes: 60,
+      supportsInstant: true,
+      supportsScheduled: true,
+      supportsRecurring: false,
+      allowsCash: true,
+    });
+
+    it('rolls a shelf’s services up into its trade, and keeps the direct count', async () => {
+      const deps = buildDeps();
+      deps.prisma.serviceCategory.findMany.mockResolvedValue([root, child]);
+      deps.prisma.service.findMany.mockResolvedValue([
+        svc('svc-1', 'child'),
+        svc('svc-2', 'root'),
+      ]);
+      const service = buildService(deps);
+
+      const { categories, total } = await service.getCatalogue();
+
+      const trade = categories.find((c) => c.id === 'root')!;
+      const shelf = categories.find((c) => c.id === 'child')!;
+
+      // The trade shows everything beneath it...
+      expect(trade.services.map((s) => s.id).sort()).toEqual([
+        'svc-1',
+        'svc-2',
+      ]);
+      // ...but only counts what is filed directly on it.
+      expect(trade.directCount).toBe(1);
+      expect(shelf.services.map((s) => s.id)).toEqual(['svc-1']);
+      expect(shelf.parentSlug).toBe('home-cleaning');
+      expect(trade.parentSlug).toBeNull();
+
+      // Counted from the query — summing the categories would count `svc-1`
+      // twice, once on the shelf and once rolled up.
+      expect(total).toBe(2);
+    });
+
+    it('prices as a number the client can render, and hides commission', async () => {
+      const deps = buildDeps();
+      deps.prisma.serviceCategory.findMany.mockResolvedValue([root]);
+      deps.prisma.service.findMany.mockResolvedValue([
+        {
+          ...svc('svc-1', 'root'),
+          commissionType: 'percentage',
+          commissionValue: { toString: () => '20' },
+        },
+      ]);
+      const service = buildService(deps);
+
+      const { categories } = await service.getCatalogue();
+      const [only] = categories[0].services;
+
+      expect(only.price).toBe(699);
+      // US-3.2: the platform/Pro split never reaches a customer surface.
+      expect(only).not.toHaveProperty('commissionType');
+      expect(only).not.toHaveProperty('commissionValue');
+    });
+
+    it('does not re-parent a shelf whose trade is switched off', async () => {
+      const deps = buildDeps();
+      deps.prisma.serviceCategory.findMany.mockResolvedValue([orphan]);
+      deps.prisma.service.findMany.mockResolvedValue([svc('svc-1', 'orphan')]);
+      const service = buildService(deps);
+
+      const { categories } = await service.getCatalogue();
+
+      // Still listed in its own right, but not claiming a parent that is not
+      // browsable — a dangling slug would be a tile leading nowhere.
+      expect(categories).toHaveLength(1);
+      expect(categories[0].parentSlug).toBeNull();
+    });
+  });
+
   describe('getCategoryTree', () => {
     it('nests children under their root and files services on the right node', async () => {
       const deps = buildDeps();

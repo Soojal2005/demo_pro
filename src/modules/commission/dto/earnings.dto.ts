@@ -9,9 +9,9 @@ import {
   IsUUID,
   Matches,
   Max,
-  MaxLength,
   Min,
 } from 'class-validator';
+import { RequiredText } from '../../../common/dto/required-text.decorator';
 import {
   COMMISSION_STATUSES,
   PAYOUT_STATUSES,
@@ -20,6 +20,9 @@ import {
 } from '../commission.types';
 
 const RUPEES = /^\d+(\.\d{1,2})?$/;
+
+/** Every `reason` in this module records why money moved. See `RequiredText`. */
+const RequiredReason = (): PropertyDecorator => RequiredText(500, 'reason');
 
 // ---------------------------------------------------------------------
 // Queries
@@ -160,8 +163,7 @@ export class ReverseCommissionDto {
       'paid out this becomes the text on the Pro’s deduction, so write it for ' +
       'them to read.',
   })
-  @IsString()
-  @MaxLength(500)
+  @RequiredReason()
   reason: string;
 }
 
@@ -172,15 +174,13 @@ export class RaiseDeductionDto {
   amount: string;
 
   @ApiProperty({ maxLength: 500, example: 'Replacement uniform' })
-  @IsString()
-  @MaxLength(500)
+  @RequiredReason()
   reason: string;
 }
 
 export class WaiveDeductionDto {
   @ApiProperty({ maxLength: 500, example: 'Raised in error' })
-  @IsString()
-  @MaxLength(500)
+  @RequiredReason()
   reason: string;
 }
 
@@ -193,8 +193,7 @@ export class RejectPayoutDto {
       'Sends the batch back. Its commissions are released for the next run and ' +
       'every deduction it was holding is given back in full.',
   })
-  @IsString()
-  @MaxLength(500)
+  @RequiredReason()
   reason: string;
 }
 
@@ -324,6 +323,32 @@ export class DeductionLineDto {
 export class DeductionStatementDto {
   @ApiProperty({ type: String, example: '300.00' }) outstandingTotal: string;
   @ApiProperty({ type: [DeductionLineDto] }) items: DeductionLineDto[];
+}
+
+/**
+ * What an admin sees, which is more than a Pro does.
+ *
+ * The Pro-facing statement hides waived rows entirely — forgiven money is not
+ * their concern. An admin needs the opposite: a waived row has to stay visible
+ * and say so, or the same debt gets raised a second time by whoever looks next.
+ */
+export class AdminDeductionLineDto extends DeductionLineDto {
+  @ApiProperty({ nullable: true }) waivedAt: Date | null;
+  @ApiProperty({ nullable: true }) waiveReason: string | null;
+}
+
+export class AdminDeductionStatementDto {
+  @ApiProperty({
+    type: String,
+    example: '300.00',
+    description:
+      'Still owed across every unwaived row. Waived rows are listed but do ' +
+      'not count towards this.',
+  })
+  outstandingTotal: string;
+
+  @ApiProperty({ type: [AdminDeductionLineDto] })
+  items: AdminDeductionLineDto[];
 }
 
 export class SkippedProDto {

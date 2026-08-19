@@ -1,4 +1,5 @@
 import {
+  ForbiddenException,
   HttpException,
   ServiceUnavailableException,
   UnauthorizedException,
@@ -232,6 +233,71 @@ describe('AuthService', () => {
       });
     });
 
+    /*
+     * The apps read `session.user` straight off this response — there is no
+     * profile endpoint to fall back on. Returning a bare token pair here left
+     * the customer app throwing on `session.user.phone` and showing a generic
+     * "Something went wrong" for what was actually a successful sign-in.
+     */
+    it('returns the account alongside the tokens', async () => {
+      const deps = buildDeps();
+      deps.otpProvider.verifyOtp.mockResolvedValue(true);
+      deps.prisma.customer.findUnique.mockResolvedValue({
+        id: 'c1',
+        phone: '+919876543210',
+        fullName: 'Asha',
+        email: 'asha@example.com',
+        status: 'verified',
+        isBlocked: false,
+      });
+      const service = buildService(deps);
+
+      await expect(
+        service.verifyOtp({
+          phone: '+919876543210',
+          code: '123456',
+          providerRef: 'ref-1',
+          actorType: 'customer',
+        }),
+      ).resolves.toEqual({
+        accessToken: 'access',
+        refreshToken: 'refresh',
+        isNewUser: false,
+        user: {
+          id: 'c1',
+          phone: '+919876543210',
+          name: 'Asha',
+          email: 'asha@example.com',
+          photoUrl: null,
+        },
+      });
+    });
+
+    it('flags a phone that has never verified before as a new user', async () => {
+      const deps = buildDeps();
+      deps.otpProvider.verifyOtp.mockResolvedValue(true);
+      deps.prisma.customer.findUnique.mockResolvedValue(null);
+      deps.prisma.customer.create.mockResolvedValue({
+        id: 'c2',
+        phone: '+919876543210',
+        fullName: null,
+        email: null,
+        status: 'verified',
+        isBlocked: false,
+      });
+      const service = buildService(deps);
+
+      const session = await service.verifyOtp({
+        phone: '+919876543210',
+        code: '123456',
+        providerRef: 'ref-1',
+        actorType: 'customer',
+      });
+
+      expect(session.isNewUser).toBe(true);
+      expect(session.user.id).toBe('c2');
+    });
+
     it('rejects a blocked customer even with a valid code', async () => {
       const deps = buildDeps();
       deps.otpProvider.verifyOtp.mockResolvedValue(true);
@@ -317,88 +383,51 @@ describe('AuthService', () => {
         accessMode: 'full',
       });
     });
+  });
 
-    it('issues an RBAC token pair to an existing active Admin by phone', async () => {
+  describe('me', () => {
+    it('reads the account fresh rather than trusting the token', async () => {
       const deps = buildDeps();
-      deps.otpProvider.verifyOtp.mockResolvedValue(true);
-      deps.prisma.adminUser.findUnique.mockResolvedValue({
-        id: 'admin-1',
-        roleId: 'role-1',
-        cityScopeJson: ['city-1'],
-        isActive: true,
-      });
-      const service = buildService(deps);
-
-      await service.verifyOtp({
+      deps.prisma.customer.findUnique.mockResolvedValue({
+        id: 'c1',
         phone: '+919876543210',
-        code: '123456',
-        providerRef: 'ref-1',
-        actorType: 'admin',
+        fullName: 'Asha',
+        email: null,
+        isBlocked: false,
       });
-
-      expect(deps.prisma.adminUser.findUnique).toHaveBeenCalledWith({
-        where: { phone: '+919876543210' },
-      });
-      expect(deps.prisma.adminUser.update).toHaveBeenCalledWith({
-        where: { id: 'admin-1' },
-        data: { lastLoginAt: expect.any(Date) },
-      });
-      expect(deps.tokenService.issueTokenPair).toHaveBeenCalledWith({
-        id: 'admin-1',
-        actorType: 'admin',
-        roleId: 'role-1',
-        cityScope: ['city-1'],
-      });
-    });
-
-    it('never self-registers an unknown Admin phone', async () => {
-      const deps = buildDeps();
-      deps.otpProvider.verifyOtp.mockResolvedValue(true);
-      deps.prisma.adminUser.findUnique.mockResolvedValue(null);
       const service = buildService(deps);
 
       await expect(
-        service.verifyOtp({
-          phone: '+919876543210',
-          code: '123456',
-          providerRef: 'ref-1',
-          actorType: 'admin',
-        }),
-      ).rejects.toThrow('No admin account is linked to this phone number');
-      expect(deps.tokenService.issueTokenPair).not.toHaveBeenCalled();
+        service.me({ id: 'c1', actorType: 'customer' }),
+      ).resolves.toEqual({
+        id: 'c1',
+        phone: '+919876543210',
+        name: 'Asha',
+        email: null,
+        photoUrl: null,
+      });
+      expect(deps.prisma.customer.findUnique).toHaveBeenCalledWith({
+        where: { id: 'c1' },
+      });
     });
 
-    it('falls back to a legacy 10-digit AWS Admin phone when no E.164 row exists', async () => {
+    // The whole point of hitting the database on every call: a token minted
+    // before the block is still cryptographically valid.
+    it('rejects a customer blocked since the token was issued', async () => {
       const deps = buildDeps();
-      deps.otpProvider.verifyOtp.mockResolvedValue(true);
-      deps.prisma.adminUser.findUnique
-        .mockResolvedValueOnce(null)
-        .mockResolvedValueOnce({
-          id: 'admin-legacy',
-          roleId: 'role-1',
-          cityScopeJson: [],
-          isActive: true,
-        });
+      deps.prisma.customer.findUnique.mockResolvedValue({
+        id: 'c1',
+        isBlocked: true,
+      });
       const service = buildService(deps);
 
-      await service.verifyOtp({
-        phone: '+919876543210',
-        code: '123456',
-        providerRef: 'ref-1',
-        actorType: 'admin',
-      });
-
-      expect(deps.prisma.adminUser.findUnique).toHaveBeenNthCalledWith(2, {
-        where: { phone: '9876543210' },
-      });
-      expect(deps.tokenService.issueTokenPair).toHaveBeenCalledWith(
-        expect.objectContaining({ id: 'admin-legacy', actorType: 'admin' }),
-      );
+      await expect(
+        service.me({ id: 'c1', actorType: 'customer' }),
+      ).rejects.toThrow(UnauthorizedException);
     });
 
-    it('rejects a deactivated Admin even after valid OTP verification', async () => {
+    it('rejects an admin deactivated since the token was issued', async () => {
       const deps = buildDeps();
-      deps.otpProvider.verifyOtp.mockResolvedValue(true);
       deps.prisma.adminUser.findUnique.mockResolvedValue({
         id: 'admin-1',
         isActive: false,
@@ -406,14 +435,103 @@ describe('AuthService', () => {
       const service = buildService(deps);
 
       await expect(
-        service.verifyOtp({
-          phone: '+919876543210',
-          code: '123456',
-          providerRef: 'ref-1',
-          actorType: 'admin',
-        }),
-      ).rejects.toThrow('Admin account is deactivated');
-      expect(deps.tokenService.issueTokenPair).not.toHaveBeenCalled();
+        service.me({ id: 'admin-1', actorType: 'admin' }),
+      ).rejects.toThrow(UnauthorizedException);
+    });
+  });
+
+  describe('updateProfile', () => {
+    it('writes only the fields that were sent', async () => {
+      const deps = buildDeps();
+      deps.prisma.customer.findUnique.mockResolvedValue({
+        id: 'c1',
+        isBlocked: false,
+      });
+      deps.prisma.customer.update.mockResolvedValue({
+        id: 'c1',
+        phone: '+919876543210',
+        fullName: 'Asha',
+        email: 'asha@example.com',
+      });
+      const service = buildService(deps);
+
+      await service.updateProfile(
+        { id: 'c1', actorType: 'customer' },
+        { email: 'asha@example.com' },
+      );
+
+      expect(deps.prisma.customer.update).toHaveBeenCalledWith({
+        where: { id: 'c1' },
+        data: { email: 'asha@example.com' },
+      });
+    });
+
+    it('clears a field sent as an empty string rather than storing ""', async () => {
+      const deps = buildDeps();
+      deps.prisma.customer.findUnique.mockResolvedValue({
+        id: 'c1',
+        isBlocked: false,
+      });
+      deps.prisma.customer.update.mockResolvedValue({
+        id: 'c1',
+        phone: '+919876543210',
+        fullName: null,
+        email: null,
+      });
+      const service = buildService(deps);
+
+      await service.updateProfile(
+        { id: 'c1', actorType: 'customer' },
+        { name: '', email: '' },
+      );
+
+      expect(deps.prisma.customer.update).toHaveBeenCalledWith({
+        where: { id: 'c1' },
+        data: { fullName: null, email: null },
+      });
+    });
+
+    it('never lets a Pro rewrite the name their KYC was approved under', async () => {
+      const deps = buildDeps();
+      const service = buildService(deps);
+
+      await expect(
+        service.updateProfile(
+          { id: 'p1', actorType: 'pro' },
+          { name: 'Other' },
+        ),
+      ).rejects.toThrow(ForbiddenException);
+      expect(deps.prisma.pro.update).not.toHaveBeenCalled();
+    });
+
+    it('refuses to edit an Admin, whose record the console owns', async () => {
+      const deps = buildDeps();
+      const service = buildService(deps);
+
+      await expect(
+        service.updateProfile(
+          { id: 'admin-1', actorType: 'admin' },
+          { name: 'Other' },
+        ),
+      ).rejects.toThrow(ForbiddenException);
+      expect(deps.prisma.adminUser.update).not.toHaveBeenCalled();
+    });
+
+    it('refuses to edit a customer blocked since the token was issued', async () => {
+      const deps = buildDeps();
+      deps.prisma.customer.findUnique.mockResolvedValue({
+        id: 'c1',
+        isBlocked: true,
+      });
+      const service = buildService(deps);
+
+      await expect(
+        service.updateProfile(
+          { id: 'c1', actorType: 'customer' },
+          { name: 'Asha' },
+        ),
+      ).rejects.toThrow(UnauthorizedException);
+      expect(deps.prisma.customer.update).not.toHaveBeenCalled();
     });
   });
 

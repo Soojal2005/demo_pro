@@ -205,6 +205,114 @@ describe('BookingsService', () => {
     });
   });
 
+  describe('admin manual assignment', () => {
+    const ELIGIBLE = {
+      id: 'pro-1',
+      status: 'approved',
+      isAvailable: true,
+      cityId: 'city-1',
+      services: [{ id: 'ps-1' }],
+    };
+    const assigning = {
+      id: 'booking-1',
+      status: 'assigning',
+      serviceId: 'svc-1',
+      address: { cityId: 'city-1' },
+      slotStartAt: null,
+      slotEndAt: null,
+    };
+
+    function arrange(pro: unknown) {
+      const deps = buildDeps();
+      deps.prisma.booking.findUnique.mockResolvedValue(assigning);
+      deps.prisma.pro.findUnique.mockResolvedValue(pro);
+      return deps;
+    }
+
+    it('places an eligible Pro on a booking that is looking for one', async () => {
+      const deps = arrange(ELIGIBLE);
+
+      await buildService(deps).assignPro('booking-1', 'pro-1', 'admin-1');
+
+      const [call] = deps.state.transition.mock.calls[0] as [
+        { to: string; expectedFrom: string[]; data: Record<string, unknown> },
+      ];
+      expect(call.to).toBe('assigned');
+      expect(call.expectedFrom).toEqual(['assigning']);
+      expect(call.data.pro).toEqual({ connect: { id: 'pro-1' } });
+    });
+
+    /**
+     * It used to write `acknowledged`, which recorded a consent the Pro never
+     * gave and — since acknowledging requires `pending_ack` — left them unable
+     * to confirm the job they had just been handed.
+     */
+    it('records the assignment as an ops act, not as the Pro accepting', async () => {
+      const deps = arrange(ELIGIBLE);
+
+      await buildService(deps).assignPro('booking-1', 'pro-1', 'admin-1');
+
+      const [call] = deps.state.transition.mock.calls[0] as [
+        { data: Record<string, unknown> },
+      ];
+      expect(call.data.assignmentOutcome).toBe('ops_assigned');
+    });
+
+    it.each([
+      ['suspended', { ...ELIGIBLE, status: 'suspended' }],
+      ['off duty', { ...ELIGIBLE, isAvailable: false }],
+      ['in another city', { ...ELIGIBLE, cityId: 'city-2' }],
+      ['without the service', { ...ELIGIBLE, services: [] }],
+      ['not a Pro at all', null],
+    ])('refuses a Pro who is %s', async (_label, pro) => {
+      const deps = arrange(pro);
+
+      const status = await captureStatus(
+        buildService(deps).assignPro('booking-1', 'pro-1', 'admin-1'),
+      );
+
+      expect(status).toBe(HttpStatus.CONFLICT);
+      expect(deps.state.transition).not.toHaveBeenCalled();
+    });
+
+    it('refuses a Pro already committed in the same window', async () => {
+      const deps = buildDeps();
+      deps.prisma.booking.findUnique.mockResolvedValue({
+        ...assigning,
+        slotStartAt: new Date('2026-08-17T09:00:00Z'),
+        slotEndAt: new Date('2026-08-17T10:00:00Z'),
+      });
+      deps.prisma.pro.findUnique.mockResolvedValue(ELIGIBLE);
+      deps.prisma.booking.count.mockResolvedValue(1);
+
+      const status = await captureStatus(
+        buildService(deps).assignPro('booking-1', 'pro-1', 'admin-1'),
+      );
+
+      expect(status).toBe(HttpStatus.CONFLICT);
+      expect(deps.state.transition).not.toHaveBeenCalled();
+    });
+
+    it('does not look for a clash when the booking has no slot', async () => {
+      const deps = arrange(ELIGIBLE);
+
+      await buildService(deps).assignPro('booking-1', 'pro-1', 'admin-1');
+
+      expect(deps.prisma.booking.count).not.toHaveBeenCalled();
+    });
+
+    it('refuses an unknown booking', async () => {
+      const deps = buildDeps();
+      deps.prisma.booking.findUnique.mockResolvedValue(null);
+
+      const status = await captureStatus(
+        buildService(deps).assignPro('booking-1', 'pro-1', 'admin-1'),
+      );
+
+      expect(status).toBe(HttpStatus.NOT_FOUND);
+    });
+  });
+
   describe('admin reassignment', () => {
     const assigned = {
       id: 'booking-1',
@@ -463,5 +571,59 @@ describe('BookingsService', () => {
         }),
       });
     });
+  });
+});
+
+describe('BookingsService.listForAdmin · search', () => {
+  async function whereFor(
+    query: Parameters<BookingsService['listForAdmin']>[0],
+    allowedCityIds?: string[],
+  ) {
+    const deps = buildDeps();
+    deps.prisma.booking.findMany.mockResolvedValue([]);
+    await buildService(deps).listForAdmin(query, allowedCityIds);
+    const [call] = deps.prisma.booking.findMany.mock.calls[0] as [
+      { where: Record<string, unknown>; take: number },
+    ];
+    return call;
+  }
+
+  /**
+   * The list is capped, so this has to run in the database. Filtering the
+   * returned page instead answers "no such booking" for anything older than
+   * the hundredth — indistinguishable from a booking that never existed.
+   */
+  it('matches the booking number in the database', async () => {
+    const { where } = await whereFor({ search: 'HB-2026-000450' });
+
+    expect(where.bookingNumber).toEqual({
+      contains: 'HB-2026-000450',
+      mode: 'insensitive',
+    });
+  });
+
+  it('still caps the result', async () => {
+    const { take } = await whereFor({ search: 'HB-2026' });
+    expect(take).toBe(100);
+  });
+
+  it('ignores an empty search rather than matching everything', async () => {
+    const { where } = await whereFor({ search: '' });
+    expect(where.bookingNumber).toBeUndefined();
+  });
+
+  it('combines a search with a status filter', async () => {
+    const { where } = await whereFor({ search: 'HB-2026', status: 'assigned' });
+
+    expect(where.status).toBe('assigned');
+    expect(where.bookingNumber).toBeDefined();
+  });
+
+  /** A scoped admin searching must not reach outside their own cities. */
+  it('keeps the city scope alongside a search', async () => {
+    const { where } = await whereFor({ search: 'HB-2026' }, ['city-1']);
+
+    expect(where.address).toEqual({ cityId: { in: ['city-1'] } });
+    expect(where.bookingNumber).toBeDefined();
   });
 });

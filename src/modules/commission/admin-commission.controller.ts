@@ -28,7 +28,7 @@ import { DeductionsService } from './deductions.service';
 import {
   AdminCommissionQueryDto,
   DeductionLineDto,
-  DeductionStatementDto,
+  AdminDeductionStatementDto,
   MissingCommissionServiceDto,
   RaiseDeductionDto,
   ReversalOutcomeDto,
@@ -207,7 +207,7 @@ export class AdminCommissionController {
   @Get('pros/:id/deductions')
   @RequirePermissions(PermissionCode.PAYOUT_READ)
   @ApiOperation({ summary: 'Everything outstanding against one Pro' })
-  @ApiOkEnvelope(DeductionStatementDto)
+  @ApiOkEnvelope(AdminDeductionStatementDto)
   @ApiErrorEnvelope(HttpStatus.UNAUTHORIZED, HttpStatus.FORBIDDEN)
   proDeductions(@Param('id') proId: string) {
     return this.admin.deductionsForPro(proId);

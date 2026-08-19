@@ -17,6 +17,7 @@ import {
 import type { AuthenticatedUser } from '../../common/types/authenticated-user.type';
 import { PrismaService } from '../../prisma/prisma.service';
 import { BookingDto } from '../bookings/dto/booking.dto';
+import { toProBooking } from '../bookings/pro-booking.view';
 import { RequireActorType } from '../identity/decorators/require-actor-type.decorator';
 import { ActorTypeGuard } from '../identity/guards/actor-type.guard';
 import { JwtAuthGuard } from '../identity/guards/jwt-auth.guard';
@@ -64,14 +65,12 @@ export class ProPaymentsController {
     HttpStatus.NOT_FOUND,
     HttpStatus.CONFLICT,
   )
-  collect(
+  async collect(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id') bookingId: string,
   ): Promise<BookingDto> {
-    return this.collection.collect(
-      user.id,
-      bookingId,
-    ) as unknown as Promise<BookingDto>;
+    const booking = await this.collection.collect(user.id, bookingId);
+    return toProBooking(booking) as unknown as BookingDto;
   }
 
   @Post('bookings/:id/cash-collection/decline')
@@ -89,16 +88,17 @@ export class ProPaymentsController {
     HttpStatus.NOT_FOUND,
     HttpStatus.CONFLICT,
   )
-  decline(
+  async decline(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id') bookingId: string,
     @Body() dto: DeclineCashDto,
   ): Promise<BookingDto> {
-    return this.collection.decline(
+    const booking = await this.collection.decline(
       user.id,
       bookingId,
       dto.reason,
-    ) as unknown as Promise<BookingDto>;
+    );
+    return toProBooking(booking) as unknown as BookingDto;
   }
 
   @Get('cash-balance')

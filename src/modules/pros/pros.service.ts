@@ -136,6 +136,7 @@ export class ProsService {
 
   async findMany(
     filters: {
+      search?: string;
       cityId?: string;
       isAvailable?: boolean;
       status?: string;
@@ -143,6 +144,16 @@ export class ProsService {
     allowedCityIds?: string[],
   ): Promise<Pro[]> {
     const where: Prisma.ProWhereInput = {
+      // In the database, not over the returned page. The three fields are the
+      // three an admin actually has to hand: a name from a conversation, a
+      // code off a roster, a number from a support ticket.
+      ...(filters.search && {
+        OR: [
+          { fullName: { contains: filters.search, mode: 'insensitive' } },
+          { employeeCode: { contains: filters.search, mode: 'insensitive' } },
+          { phone: { contains: filters.search, mode: 'insensitive' } },
+        ],
+      }),
       ...(filters.cityId
         ? { cityId: filters.cityId }
         : allowedCityIds?.length

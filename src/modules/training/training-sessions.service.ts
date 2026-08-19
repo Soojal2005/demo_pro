@@ -33,9 +33,23 @@ export class TrainingSessionsService {
     const page = query.page ?? 1;
     const limit = query.limit ?? 20;
 
+    // Both bounds are optional and independent: an open-ended range is a real
+    // question, and requiring the pair would force a caller asking "what is
+    // coming up" to invent an end date.
+    const scheduledAt =
+      query.scheduledFrom || query.scheduledTo
+        ? {
+            ...(query.scheduledFrom
+              ? { gte: new Date(query.scheduledFrom) }
+              : {}),
+            ...(query.scheduledTo ? { lte: new Date(query.scheduledTo) } : {}),
+          }
+        : undefined;
+
     const where: Prisma.OfflineTrainingSessionWhereInput = {
       ...(query.status ? { status: query.status } : {}),
       ...(query.categoryId ? { categoryId: query.categoryId } : {}),
+      ...(scheduledAt ? { scheduledAt } : {}),
     };
 
     const [rows, total] = await Promise.all([
@@ -212,6 +226,64 @@ export class TrainingSessionsService {
         skipDuplicates: true,
       });
     }
+
+    return this.get(sessionId);
+  }
+
+  /**
+   * Take a Pro off the list and give the seat back.
+   *
+   * Enrolment previously had no way out, which made two ordinary things
+   * unfixable: a Pro enrolled by mistake held a seat forever, and one who
+   * called to say they could not come held one too. Capacity could not be
+   * lowered past them either — it may not drop below the enrolled count — so
+   * a session filled with the wrong people had no route back to correct.
+   *
+   * A marked row is not removed. Once somebody has recorded whether a Pro
+   * turned up, that is a statement about what happened in a room, and
+   * deleting it would erase the record rather than fix the list.
+   */
+  async removeEnrolment(
+    sessionId: string,
+    proId: string,
+  ): Promise<TrainingSessionDto> {
+    const session = await this.prisma.offlineTrainingSession.findUnique({
+      where: { id: sessionId },
+      select: { id: true, status: true },
+    });
+    if (!session) throw new NotFoundException('Training session not found');
+    if (session.status !== 'scheduled') {
+      throw apiError(
+        `A ${session.status} session cannot change its enrolments`,
+        HttpStatus.CONFLICT,
+      );
+    }
+
+    const enrolment = await this.prisma.offlineTrainingAttendance.findUnique({
+      where: { sessionId_proId: { sessionId, proId } },
+      select: { markedAt: true },
+    });
+    if (!enrolment) {
+      throw new NotFoundException('That Pro is not enrolled in this session');
+    }
+    if (enrolment.markedAt) {
+      throw apiError(
+        'Attendance has already been marked for this Pro',
+        HttpStatus.CONFLICT,
+        [
+          {
+            field: 'proId',
+            message:
+              'Removing them would erase a record of who was in the room',
+            code: 'ATTENDANCE_ALREADY_MARKED',
+          },
+        ],
+      );
+    }
+
+    await this.prisma.offlineTrainingAttendance.delete({
+      where: { sessionId_proId: { sessionId, proId } },
+    });
 
     return this.get(sessionId);
   }

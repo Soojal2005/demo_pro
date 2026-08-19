@@ -24,6 +24,7 @@ function buildDeps() {
       createMany: jest.fn().mockResolvedValue({ count: 0 }),
       findUnique: jest.fn(),
       findMany: jest.fn().mockResolvedValue([]),
+      count: jest.fn().mockResolvedValue(0),
       update: jest.fn().mockResolvedValue({}),
     },
     order: { findMany: jest.fn().mockResolvedValue([]) },
@@ -392,5 +393,47 @@ describe('resolve', () => {
     await expect(build(deps).resolve('nope', 'x', 'admin-1')).rejects.toThrow(
       HttpException,
     );
+  });
+});
+
+describe('openDiscrepancies', () => {
+  /**
+   * The count is the point of this list. Without it a caller cannot tell a
+   * last page from a full one, and "how much is still unanswered" is the
+   * question a work queue exists to settle — its sibling `runs()` has always
+   * reported one.
+   */
+  it('reports how many are still open, not just the page', async () => {
+    const deps = buildDeps();
+    deps.prisma.reconciliationDiscrepancy.count.mockResolvedValue(137);
+    deps.prisma.reconciliationDiscrepancy.findMany.mockResolvedValue([
+      { id: 'disc-1' },
+    ]);
+
+    const result = await build(deps).openDiscrepancies({ page: 2, limit: 50 });
+
+    expect(result).toEqual({
+      page: 2,
+      limit: 50,
+      total: 137,
+      items: [{ id: 'disc-1' }],
+    });
+  });
+
+  /** The count must be narrowed the same way the page is, or it overstates. */
+  it('counts the same rows it lists', async () => {
+    const deps = buildDeps();
+    deps.prisma.reconciliationDiscrepancy.count.mockResolvedValue(4);
+
+    await build(deps).openDiscrepancies({ kind: 'chain_broken' });
+
+    const where = { resolvedAt: null, kind: 'chain_broken' };
+    expect(deps.prisma.reconciliationDiscrepancy.count).toHaveBeenCalledWith({
+      where,
+    });
+    expect(
+      deps.prisma.reconciliationDiscrepancy.findMany.mock.calls.at(-1)![0]
+        .where,
+    ).toEqual(where);
   });
 });

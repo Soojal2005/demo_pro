@@ -22,7 +22,7 @@ import {
   ApiOkEnvelope,
 } from '../../common/swagger/api-envelope.decorator';
 import type { AuthenticatedUser } from '../../common/types/authenticated-user.type';
-import type { Booking, ChatMessage, RecurringPlan } from '../../prisma/client';
+import type { ChatMessage, RecurringPlan } from '../../prisma/client';
 import { RequireActorType } from '../identity/decorators/require-actor-type.decorator';
 import { ActorTypeGuard } from '../identity/guards/actor-type.guard';
 import { JwtAuthGuard } from '../identity/guards/jwt-auth.guard';
@@ -33,6 +33,10 @@ import { BookingLifecycleService } from './booking-lifecycle.service';
 import { BookingTrackingService } from './booking-tracking.service';
 import { BookingsService } from './bookings.service';
 import { BookingDto } from './dto/booking.dto';
+import {
+  CustomerBookingDetailDto,
+  CustomerBookingDto,
+} from './dto/customer-booking.dto';
 import { TrackingDto } from './dto/tracking.dto';
 import { CancelBookingDto } from './dto/cancel-booking.dto';
 import {
@@ -128,7 +132,7 @@ export class BookingsController {
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: CreateBookingDto,
     @Headers('idempotency-key') idempotencyKey?: string,
-  ): Promise<Booking> {
+  ): Promise<CustomerBookingDetailDto> {
     const booking = await this.bookings.create(user.id, dto, idempotencyKey);
     if (idempotencyKey) {
       await this.bookings.recordIdempotencyKey(
@@ -137,7 +141,12 @@ export class BookingsController {
         idempotencyKey,
       );
     }
-    return booking;
+    /*
+     * Re-read with its relations rather than returning the row just written.
+     * The client draws a card from this response — service name, address line,
+     * price — and none of those are on the row `create` hands back.
+     */
+    return this.bookings.viewOf(user.id, booking.id);
   }
 
   @Post(':id/rebook')
@@ -154,27 +163,30 @@ export class BookingsController {
     HttpStatus.NOT_FOUND,
     HttpStatus.CONFLICT,
   )
-  rebook(
+  async rebook(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id') id: string,
-  ): Promise<Booking> {
-    return this.bookings.rebook(user.id, id);
+  ): Promise<CustomerBookingDetailDto> {
+    const booking = await this.bookings.rebook(user.id, id);
+    return this.bookings.viewOf(user.id, booking.id);
   }
 
   @Get()
   @ApiOperation({ summary: 'My booking history' })
-  @ApiOkEnvelope(BookingDto, { isArray: true })
+  @ApiOkEnvelope(CustomerBookingDto, { isArray: true })
   @ApiErrorEnvelope(HttpStatus.UNAUTHORIZED)
-  list(@CurrentUser() user: AuthenticatedUser): Promise<Booking[]> {
-    return this.bookings.listForCustomer(user.id);
+  list(@CurrentUser() user: AuthenticatedUser): Promise<CustomerBookingDto[]> {
+    return this.bookings.listViewForCustomer(user.id);
   }
 
   @Get('live')
   @ApiOperation({ summary: 'My live orders' })
-  @ApiOkEnvelope(BookingDto, { isArray: true })
+  @ApiOkEnvelope(CustomerBookingDto, { isArray: true })
   @ApiErrorEnvelope(HttpStatus.UNAUTHORIZED)
-  listLive(@CurrentUser() user: AuthenticatedUser): Promise<Booking[]> {
-    return this.bookings.listLiveForCustomer(user.id);
+  listLive(
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<CustomerBookingDto[]> {
+    return this.bookings.listLiveViewForCustomer(user.id);
   }
 
   @Get('recurring-plans')
@@ -224,13 +236,13 @@ export class BookingsController {
 
   @Get(':id')
   @ApiOperation({ summary: 'Get one of my bookings' })
-  @ApiOkEnvelope(BookingDto)
+  @ApiOkEnvelope(CustomerBookingDetailDto)
   @ApiErrorEnvelope(HttpStatus.UNAUTHORIZED, HttpStatus.NOT_FOUND)
   getOne(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id') id: string,
-  ): Promise<Booking> {
-    return this.bookings.getOwnedBooking(user.id, id);
+  ): Promise<CustomerBookingDetailDto> {
+    return this.bookings.getOwnedBookingDetailView(user.id, id);
   }
 
   @Post(':id/cancel')
@@ -240,18 +252,21 @@ export class BookingsController {
       'Available until the job starts. After that only support can act — a ' +
       'partial refund on work already done is a judgement call, not a formula.',
   })
-  @ApiOkEnvelope(BookingDto)
+  @ApiOkEnvelope(CustomerBookingDetailDto)
   @ApiErrorEnvelope(
     HttpStatus.UNAUTHORIZED,
     HttpStatus.NOT_FOUND,
     HttpStatus.CONFLICT,
   )
-  cancel(
+  async cancel(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id') id: string,
     @Body() dto: CancelBookingDto,
-  ): Promise<Booking> {
-    return this.cancellation.cancelAsCustomer(user.id, id, dto.reason);
+  ): Promise<CustomerBookingDetailDto> {
+    await this.cancellation.cancelAsCustomer(user.id, id, dto.reason);
+    /* Re-read: the client replaces its copy with this, and the cancellation
+       fee and refund it needs to show are written by the call above. */
+    return this.bookings.viewOf(user.id, id);
   }
 
   @Get(':id/cancellation-policy')
@@ -320,7 +335,7 @@ export class BookingsController {
       'A booking that already had a Pro returns to `assigning` and dispatch ' +
       're-runs against the new time.',
   })
-  @ApiOkEnvelope(BookingDto)
+  @ApiOkEnvelope(CustomerBookingDetailDto)
   @ApiErrorEnvelope(
     HttpStatus.BAD_REQUEST,
     HttpStatus.UNAUTHORIZED,
@@ -328,17 +343,21 @@ export class BookingsController {
     HttpStatus.NOT_FOUND,
     HttpStatus.CONFLICT,
   )
-  reschedule(
+  async reschedule(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id') id: string,
     @Body() dto: RescheduleBookingDto,
-  ): Promise<Booking> {
-    return this.reschedule_.rescheduleAsCustomer(
+  ): Promise<CustomerBookingDetailDto> {
+    await this.reschedule_.rescheduleAsCustomer(
       user.id,
       id,
       dto.slotStartAt,
       dto.reason,
     );
+    /* Re-read, for the same reason `cancel` does: the client replaces its copy
+       with this, and the new slot — plus the status the booking landed in when
+       its Pro was released — are written by the call above. */
+    return this.bookings.viewOf(user.id, id);
   }
 
   @Post(':id/start-otp/resend')
