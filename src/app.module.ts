@@ -24,6 +24,7 @@ import { ConfigUiModule } from './modules/config-ui/config-ui.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { SupportModule } from './modules/support/support.module';
+import { LoyaltyModule } from './modules/loyalty/loyalty.module';
 
 // NODE_ENV picks the override file; `.env` is always the fallback beneath it.
 // ConfigModule gives the FIRST file that defines a variable precedence, so the
@@ -70,6 +71,11 @@ const nodeEnv = process.env.NODE_ENV ?? 'local';
     // PaymentsModule must already be constructed — it is, above. Also depends
     // on BookingsModule for the evidence bundle and the grace-window reader.
     SupportModule,
+    // Module 16. Registers into module 4's LOYALTY_PORT delegate, so
+    // BookingsModule must already be constructed — it is, well above. Reads
+    // module 4's PlatformSettingsService for its own tunables rather than
+    // adding a second reader for them.
+    LoyaltyModule,
     // Module 15 is an aggregation layer over the domain modules above. It is
     // last so it reuses their tables and services instead of owning copies.
     AdminModule,

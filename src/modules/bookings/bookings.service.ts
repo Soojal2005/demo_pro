@@ -2,9 +2,11 @@ import {
   HttpStatus,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { apiError } from '../../common/utils';
+import { fromPaise, toPaise } from '../payments/payments.money';
 import type { Booking, Prisma } from '../../prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ServiceCatalogService } from '../catalog/service-catalog.service';
@@ -25,6 +27,7 @@ import type {
 import { PRO_JOB_INCLUDE, type ProJobRow } from './pro-booking.view';
 import { DISPATCH_PORT, type DispatchPort } from './ports/dispatch.port';
 import { PAYMENTS_PORT, type PaymentsPort } from './ports/payments.port';
+import { LOYALTY_PORT, type LoyaltyPort } from './ports/loyalty.port';
 import {
   SERVICEABILITY_PORT,
   type ServiceabilityPort,
@@ -43,6 +46,8 @@ const LIVE_STATUSES: BookingStatus[] = [
 
 @Injectable()
 export class BookingsService {
+  private readonly logger = new Logger(BookingsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly state: BookingStateService,
@@ -52,6 +57,7 @@ export class BookingsService {
     @Inject(PAYMENTS_PORT) private readonly payments: PaymentsPort,
     @Inject(SERVICEABILITY_PORT)
     private readonly serviceability: ServiceabilityPort,
+    @Inject(LOYALTY_PORT) private readonly loyalty: LoyaltyPort,
   ) {}
 
   // ------------------------------------------------------------------
@@ -155,6 +161,17 @@ export class BookingsService {
       slotStartAt.getTime() + service.durationMinutes * 60_000,
     );
 
+    // Module 16. Priced before the row is written, so what the customer is
+    // charged is decided once and frozen with everything else. Bound to a
+    // no-op returning a full-price quote when loyalty is not deployed, so this
+    // path is unchanged on a deployment without it.
+    const quote = await this.loyalty.quote({
+      customerId,
+      flatPrice: service.flatPrice.toString(),
+      coinsRequested: dto.coinsToRedeem ?? 0,
+      cityId: address.cityId,
+    });
+
     const booking = await this.createWithUniqueBookingNumber({
       customerId,
       serviceId: service.id,
@@ -167,6 +184,15 @@ export class BookingsService {
       slotEndAt,
       // Frozen here, and never recomputed from the live catalogue again.
       flatPrice: service.flatPrice,
+      // Frozen with it, and for the same reason: a later change to the coin
+      // rate or to the plan's percentage must not re-price a job somebody has
+      // already agreed to.
+      coinsRedeemed: quote.coinsRedeemed,
+      walletDiscountAmount: quote.walletDiscountAmount,
+      subscriptionDiscountAmount: quote.subscriptionDiscountAmount,
+      discountAmount: quote.discountAmount,
+      payableAmount: quote.payableAmount,
+      subscriptionId: quote.subscriptionId,
       paymentMode: dto.paymentMode,
       paymentStatus: 'unpaid',
       status: 'created',
@@ -174,7 +200,53 @@ export class BookingsService {
 
     await this.state.recordEvent(booking.id, 'created', 'customer', customerId);
 
-    return this.advanceAfterCreation(booking);
+    // Spend what the quote promised. Kept out of the creation write because
+    // the debit takes a row lock on the wallet, and holding that for the
+    // length of a booking insert would serialise a household's bookings behind
+    // each other for no benefit.
+    //
+    // It can fail: the customer may have spent the same coins on another
+    // booking in the seconds since the quote. When it does, the booking is
+    // **re-priced to its full amount rather than refused** — they wanted this
+    // job, and losing it over a discount that was never load-bearing would be
+    // the wrong trade. `repriceWithoutDiscounts` is the whole of the recovery.
+    const priced = await this.commitDiscounts(booking);
+
+    return this.advanceAfterCreation(priced);
+  }
+
+  /**
+   * "What would this cost me?" — priced without creating anything.
+   *
+   * The endpoint behind the coin slider, so it is called on every drag and has
+   * to be a pure read. It deliberately runs the **same** `loyalty.quote` that
+   * `create` runs a moment later, rather than a parallel estimate: a preview
+   * that can disagree with the booking is worse than no preview, because the
+   * customer agrees to one number and is charged another.
+   *
+   * `addressId` is optional and used only to resolve the city, for city-scoped
+   * subscription plans. It is still ownership-checked — an address id is a
+   * probe for whether someone else's address exists otherwise.
+   */
+  async quote(
+    customerId: string,
+    serviceId: string,
+    coinsToRedeem = 0,
+    addressId?: string,
+  ) {
+    const service = await this.catalog.assertBookable(serviceId);
+
+    const cityId = addressId
+      ? (await this.customers.getAddressForCustomer(customerId, addressId))
+          .cityId
+      : null;
+
+    return this.loyalty.quote({
+      customerId,
+      flatPrice: service.flatPrice.toString(),
+      coinsRequested: coinsToRedeem,
+      cityId,
+    });
   }
 
   /**
@@ -188,6 +260,10 @@ export class BookingsService {
   async rebook(customerId: string, sourceBookingId: string): Promise<Booking> {
     const source = await this.getOwnedBooking(customerId, sourceBookingId);
 
+    // Coins are deliberately **not** carried over. A rebook is one tap, and
+    // one tap must not silently spend a balance the customer has not looked
+    // at since. The subscription discount does carry, because it applies to
+    // every booking and costs them nothing to take.
     const created = await this.create(customerId, {
       serviceId: source.serviceId,
       addressId: source.addressId,
@@ -681,7 +757,10 @@ export class BookingsService {
 
     // Throws today: Payments is not built. The booking survives in
     // awaiting_payment, which is the honest state for it to be in.
-    await this.payments.createOrder(booking.id, booking.flatPrice.toString());
+    await this.payments.createOrder(
+      booking.id,
+      booking.payableAmount.toString(),
+    );
 
     return awaiting;
   }
@@ -729,6 +808,48 @@ export class BookingsService {
    * If that leaves production one or more values behind, consume the stale
    * values and retry instead of returning a 500 to the customer.
    */
+  /**
+   * Spend the coins the quote promised, or take the discount back off.
+   *
+   * The recovery path matters more than the happy one. A booking already
+   * exists at this point, with a discounted `payableAmount` frozen onto it and
+   * a CHECK constraint asserting the parts add up. If the wallet refuses the
+   * debit — the balance moved between quote and commit — leaving the row as it
+   * is would mean a customer charged a discounted price for coins nobody
+   * deducted. So the row is put back to full price, which is a price they were
+   * shown and can be charged.
+   *
+   * The subscription discount survives that reset, because it never depended
+   * on a balance: only the wallet portion is taken back.
+   */
+  private async commitDiscounts(booking: Booking): Promise<Booking> {
+    if (booking.coinsRedeemed === 0) return booking;
+
+    try {
+      await this.loyalty.commit(booking.id);
+      return booking;
+    } catch (error) {
+      this.logger.warn(
+        `Booking ${booking.bookingNumber}: ${booking.coinsRedeemed} coins could not be spent (${
+          error instanceof Error ? error.message : String(error)
+        }). Re-priced without the coin discount.`,
+      );
+
+      const discountAmount = booking.subscriptionDiscountAmount.toString();
+      return this.prisma.booking.update({
+        where: { id: booking.id },
+        data: {
+          coinsRedeemed: 0,
+          walletDiscountAmount: '0',
+          discountAmount,
+          payableAmount: fromPaise(
+            toPaise(booking.flatPrice.toString()) - toPaise(discountAmount),
+          ),
+        },
+      });
+    }
+  }
+
   private async createWithUniqueBookingNumber(
     data: Omit<Prisma.BookingUncheckedCreateInput, 'bookingNumber'>,
   ): Promise<Booking> {

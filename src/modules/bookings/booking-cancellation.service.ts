@@ -1,19 +1,18 @@
-import { HttpStatus, Inject, Injectable } from '@nestjs/common';
+import { HttpStatus, Inject, Injectable, Logger } from '@nestjs/common';
 import { apiError } from '../../common/utils';
+import { fromPaise, toPaise } from '../payments/payments.money';
 import type { Booking } from '../../prisma/client';
 import type {
   BookingStatus,
   CancellationWindow,
   CancelledByType,
 } from './booking.types';
-import {
-  cancellationWindowFor,
-  windowChargesFee,
-  windowRequiresOps,
-} from './booking.types';
+import { cancellationWindowFor, windowRequiresOps } from './booking.types';
 import { BookingStateService } from './booking-state.service';
 import { BookingsService } from './bookings.service';
+import { decideCancellation, type PolicyDecision } from './cancellation-policy';
 import { DISPATCH_PORT, type DispatchPort } from './ports/dispatch.port';
+import { LOYALTY_PORT, type LoyaltyPort } from './ports/loyalty.port';
 import { PAYMENTS_PORT, type PaymentsPort } from './ports/payments.port';
 import { PlatformSettingsService } from './platform-settings.service';
 
@@ -43,12 +42,15 @@ interface CancelInput {
  */
 @Injectable()
 export class BookingCancellationService {
+  private readonly logger = new Logger(BookingCancellationService.name);
+
   constructor(
     private readonly state: BookingStateService,
     private readonly bookings: BookingsService,
     private readonly settings: PlatformSettingsService,
     @Inject(DISPATCH_PORT) private readonly dispatch: DispatchPort,
     @Inject(PAYMENTS_PORT) private readonly payments: PaymentsPort,
+    @Inject(LOYALTY_PORT) private readonly loyalty: LoyaltyPort,
   ) {}
 
   /**
@@ -119,7 +121,7 @@ export class BookingCancellationService {
       reason,
       cancelledByType: 'system',
       actorId: 'system',
-      cancellationFeeAmount: '0',
+      cancellationFeeAmount: '0.00',
     });
   }
 
@@ -162,22 +164,91 @@ export class BookingCancellationService {
     return { cancelled };
   }
 
-  /** Which of the six windows a booking is in, for display and for ops. */
-  async describeWindow(bookingId: string): Promise<{
+  /**
+   * "What happens if I cancel this right now?" — the screen a customer sees
+   * before they confirm, and the read ops uses to answer the same question on
+   * the phone.
+   *
+   * Deliberately computed by the **same function that executes the
+   * cancellation**, not by a parallel description of it. A preview that can
+   * disagree with the action is worse than no preview: the customer is shown a
+   * number, agrees to it, and is charged a different one.
+   */
+  async describeWindow(
+    bookingId: string,
+    now = new Date(),
+  ): Promise<{
     window: CancellationWindow | null;
     chargesFee: boolean;
     requiresOps: boolean;
     feeAmount: string;
+    refundAmount: string;
+    coinsReturned: number;
+    timing: string;
+    hoursUntilSlot: number | null;
+    freeCancellationHours: number;
+    freeUntil: Date | null;
+    reason: string;
+    feeWaivedBySubscription: boolean;
   }> {
     const booking = await this.bookings.getByIdOrFail(bookingId);
     const window = cancellationWindowFor(booking.status as BookingStatus);
-    const fee = await this.configuredFee();
+
+    if (window === null || window === 'F') {
+      return {
+        window,
+        chargesFee: false,
+        requiresOps: false,
+        feeAmount: '0.00',
+        refundAmount: '0.00',
+        coinsReturned: 0,
+        timing: 'unscheduled',
+        hoursUntilSlot: null,
+        freeCancellationHours: 0,
+        freeUntil: null,
+        reason:
+          window === 'F'
+            ? 'This job is already complete — raise a dispute through support instead.'
+            : 'This booking is already cancelled.',
+        feeWaivedBySubscription: false,
+      };
+    }
+
+    const config = await this.readPolicyConfig(booking.customerId);
+    const decision = decideCancellation({
+      status: booking.status as BookingStatus,
+      slotStartAt: booking.slotStartAt,
+      payableAmount: booking.payableAmount.toString(),
+      freeCancellationHours: config.freeCancellationHours,
+      lateCancellationFeePercent: config.lateCancellationFeePercent,
+      windowDFeeAmount: config.windowDFeeAmount,
+      subscriptionWaivesFee: config.waivesCancellationFee,
+      cancelledByType: 'customer',
+      now,
+    });
 
     return {
       window,
-      chargesFee: window ? windowChargesFee(window) : false,
-      requiresOps: window ? windowRequiresOps(window) : false,
-      feeAmount: window && windowChargesFee(window) ? fee : '0',
+      chargesFee: decision.feeAmount !== '0.00',
+      requiresOps: windowRequiresOps(window),
+      feeAmount: decision.feeAmount,
+      // Nothing is refunded on a booking nobody has paid for yet.
+      refundAmount:
+        booking.paymentStatus === 'paid' ? decision.refundAmount : '0.00',
+      // Coins go back whatever the fee, and whatever the payment status —
+      // they were spent at creation, not at capture.
+      coinsReturned: booking.coinsRedeemed,
+      timing: decision.timing,
+      hoursUntilSlot: decision.hoursUntilSlot,
+      freeCancellationHours: config.freeCancellationHours,
+      freeUntil: booking.slotStartAt
+        ? new Date(
+            booking.slotStartAt.getTime() -
+              config.freeCancellationHours * 3_600_000,
+          )
+        : null,
+      reason: decision.reason,
+      feeWaivedBySubscription: decision.feeWaivedBySubscription,
     };
   }
 
@@ -187,7 +258,8 @@ export class BookingCancellationService {
     const booking = await this.bookings.getByIdOrFail(input.bookingId);
     const window = this.windowOrFail(booking);
 
-    const fee = await this.resolveFee(window, input);
+    const decision = await this.decide(booking, window, input);
+    const fee = this.resolveFee(window, input, decision);
     const refund = this.resolveRefund(booking, window, input, fee);
 
     // Release the Pro before anything else. Window D exists because someone is
@@ -218,11 +290,82 @@ export class BookingCancellationService {
     });
 
     // Windows A and B never charged anything, so there is nothing to send.
-    if (refund !== '0' && booking.paymentStatus === 'paid') {
+    if (Number(refund) > 0 && booking.paymentStatus === 'paid') {
       await this.payments.initiateRefund(booking.id, refund);
     }
 
+    // Coins go back, and the subscription's booking allowance with them.
+    //
+    // Unconditional on the fee and on the payment status: coins were spent
+    // when the booking was created, not when it was captured, so a customer
+    // who cancels an unpaid booking is still owed them. Non-fatal for the same
+    // reason the commission call is — the booking is genuinely cancelled, and
+    // a customer must not see "cancel" fail because a loyalty credit did.
+    // Idempotent on the other side, so a support retry does not double-credit.
+    try {
+      await this.loyalty.release(booking.id);
+    } catch (error) {
+      this.logger.error(
+        `Booking ${booking.id} was cancelled, but its ${booking.coinsRedeemed} redeemed coins were not returned. Return them with a wallet adjustment.`,
+        error instanceof Error ? error.stack : String(error),
+      );
+    }
+
     return cancelled;
+  }
+
+  /**
+   * Which fee the policy produces for this booking, right now.
+   *
+   * Reads the customer's subscription perks, so a plan that waives the fee
+   * does so here rather than in three separate call sites.
+   */
+  private async decide(
+    booking: Booking,
+    window: CancellationWindow,
+    input: CancelInput,
+  ): Promise<PolicyDecision> {
+    const config = await this.readPolicyConfig(booking.customerId);
+
+    return decideCancellation({
+      status: booking.status as BookingStatus,
+      slotStartAt: booking.slotStartAt,
+      payableAmount: booking.payableAmount.toString(),
+      freeCancellationHours: config.freeCancellationHours,
+      lateCancellationFeePercent: config.lateCancellationFeePercent,
+      windowDFeeAmount: config.windowDFeeAmount,
+      subscriptionWaivesFee: config.waivesCancellationFee,
+      cancelledByType: input.cancelledByType,
+      now: new Date(),
+    });
+  }
+
+  private async readPolicyConfig(customerId: string): Promise<{
+    freeCancellationHours: number;
+    lateCancellationFeePercent: number;
+    windowDFeeAmount: string;
+    waivesCancellationFee: boolean;
+  }> {
+    const [
+      freeCancellationHours,
+      lateCancellationFeePercent,
+      windowDFeeAmount,
+      perks,
+    ] = await Promise.all([
+      this.settings.getNumber('booking.freeCancellationHours', 6),
+      this.settings.getNumber('booking.lateCancellationFeePercent', 25),
+      this.configuredFee(),
+      // Bound to a no-op returning no perks when module 16 is absent, so this
+      // whole path works unchanged on a deployment without loyalty.
+      this.loyalty.perksFor(customerId),
+    ]);
+
+    return {
+      freeCancellationHours: Math.max(0, freeCancellationHours),
+      lateCancellationFeePercent,
+      windowDFeeAmount,
+      waivesCancellationFee: perks.waivesCancellationFee,
+    };
   }
 
   private windowOrFail(booking: Booking): CancellationWindow {
@@ -250,18 +393,30 @@ export class BookingCancellationService {
     return window;
   }
 
-  /** Only window D carries one, and only when the customer is the canceller. */
-  private async resolveFee(
+  /**
+   * What the platform retains.
+   *
+   * An explicit amount from ops always wins — a human looking at the case is
+   * the one authority this policy does not try to replace. Otherwise the fee
+   * is whatever `decideCancellation` decided, which is the same function the
+   * customer's preview screen was rendered from.
+   *
+   * `window` is still taken so the signature says what the decision depends
+   * on, and so a window-E cancellation — which never reaches the policy —
+   * cannot silently pick up a percentage fee.
+   */
+  private resolveFee(
     window: CancellationWindow,
     input: CancelInput,
-  ): Promise<string> {
+    decision: PolicyDecision,
+  ): string {
     if (input.cancellationFeeAmount !== undefined) {
       return input.cancellationFeeAmount;
     }
-    if (!windowChargesFee(window)) return '0';
-    // The platform failing to supply is never the customer's cost.
-    if (input.cancelledByType !== 'customer') return '0';
-    return this.configuredFee();
+    // Window E is "partial, at ops discretion" — a fee computed here would be
+    // exactly the formula US-4.21 warns against.
+    if (windowRequiresOps(window)) return '0';
+    return decision.feeAmount;
   }
 
   private resolveRefund(
@@ -271,17 +426,21 @@ export class BookingCancellationService {
     fee: string,
   ): string {
     // Nothing was ever charged in window A.
-    if (window === 'A' || booking.paymentStatus !== 'paid') return '0';
+    if (window === 'A' || booking.paymentStatus !== 'paid') return '0.00';
 
     if (window === 'E') {
       // Deliberately not computed. "Partial, at ops discretion" — routing this
       // to a formula is exactly what US-4.21 warns against.
-      return input.refundAmount ?? '0';
+      return input.refundAmount ?? '0.00';
     }
 
-    const paid = Number(booking.flatPrice);
-    const refund = Math.max(0, paid - Number(fee));
-    return refund.toFixed(2);
+    // `payableAmount`, not `flatPrice`. A customer who paid ₹400 of a ₹500 job
+    // after a subscription discount and a coin redemption is owed ₹400 back —
+    // refunding the list price would hand them money the platform never took,
+    // and the coins they spent are returned separately by `loyalty.release`.
+    return fromPaise(
+      Math.max(0, toPaise(booking.payableAmount.toString()) - toPaise(fee)),
+    );
   }
 
   private configuredFee(): Promise<string> {

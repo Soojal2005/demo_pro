@@ -17,6 +17,11 @@ function row(overrides: Partial<CustomerBookingRow> = {}): CustomerBookingRow {
     bookingType: 'instant',
     paymentStatus: 'unpaid',
     flatPrice: decimal('599.00'),
+    // Undiscounted by default, so the money assertions in this file stay about
+    // the mapper rather than about loyalty. The discount cases override these.
+    payableAmount: decimal('599.00'),
+    discountAmount: decimal('0.00'),
+    coinsRedeemed: 0,
     slotStartAt: new Date('2026-08-15T09:30:00.000Z'),
     slotEndAt: new Date('2026-08-15T11:00:00.000Z'),
     createdAt: new Date('2026-08-15T09:00:00.000Z'),
@@ -225,5 +230,46 @@ describe('toCustomerBookingDetail', () => {
     expect(toCustomerBookingDetail(detail).timeline).toEqual([
       { status: 'created', by: 'customer', at: '2026-08-15T09:00:00.000Z' },
     ]);
+  });
+});
+
+describe('toCustomerBooking · what the customer is charged', () => {
+  it('shows the payable amount as the price, not the catalogue price', () => {
+    // The bug this guards against is invisible to a merge: `price` reading
+    // `flatPrice` compiles, passes every other test, and quotes a household a
+    // figure nobody ever took from them.
+    const mapped = toCustomerBooking(
+      row({
+        flatPrice: decimal('500.00'),
+        payableAmount: decimal('350.00'),
+        discountAmount: decimal('150.00'),
+        coinsRedeemed: 100,
+      }),
+    );
+
+    expect(mapped.price).toBe(350);
+    expect(mapped.listPrice).toBe(500);
+    expect(mapped.discountAmount).toBe(150);
+    expect(mapped.coinsRedeemed).toBe(100);
+  });
+
+  it('offers no struck-through price when nothing was discounted', () => {
+    // A "was ₹599, now ₹599" card is worse than no card decoration at all.
+    const mapped = toCustomerBooking(row());
+
+    expect(mapped.price).toBe(599);
+    expect(mapped.listPrice).toBeNull();
+    expect(mapped.discountAmount).toBeNull();
+    expect(mapped.coinsRedeemed).toBe(0);
+  });
+
+  it('reads the discount column rather than comparing two decimals', () => {
+    // '599.00' and '599' are the same money and different strings, so a
+    // comparison would report a phantom discount.
+    const mapped = toCustomerBooking(
+      row({ flatPrice: decimal('599'), payableAmount: decimal('599.00') }),
+    );
+
+    expect(mapped.listPrice).toBeNull();
   });
 });

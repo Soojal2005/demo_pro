@@ -54,6 +54,35 @@ function buildDeps() {
   const serviceability = {
     resolveForBooking: jest.fn().mockResolvedValue({ areaId: null }),
   };
+  // No plan, no coins — the default a booking spec wants unless it is
+  // specifically about loyalty. `quote` returns the full flat price, which is
+  // exactly what the no-op port does in production when module 16 is absent.
+  const loyalty = {
+    quote: jest.fn(({ flatPrice }: { flatPrice: string }) =>
+      Promise.resolve({
+        flatPrice,
+        subscriptionDiscountAmount: '0.00',
+        coinsRedeemed: 0,
+        walletDiscountAmount: '0.00',
+        discountAmount: '0.00',
+        payableAmount: flatPrice,
+        subscriptionId: null,
+        planName: null,
+        coinBalance: 0,
+        maxRedeemableCoins: 0,
+        coinsEarnedEstimate: 0,
+      }),
+    ),
+    commit: jest.fn(),
+    release: jest.fn(),
+    onBookingCompleted: jest.fn(),
+    perksFor: jest.fn().mockResolvedValue({
+      waivesCancellationFee: false,
+      extraReschedules: 0,
+      planName: null,
+    }),
+  };
+
   return {
     prisma,
     state,
@@ -62,6 +91,7 @@ function buildDeps() {
     dispatch,
     payments,
     serviceability,
+    loyalty,
   };
 }
 
@@ -74,6 +104,7 @@ function buildService(deps: ReturnType<typeof buildDeps>): BookingsService {
     deps.dispatch as never,
     deps.payments as never,
     deps.serviceability,
+    deps.loyalty,
   );
 }
 

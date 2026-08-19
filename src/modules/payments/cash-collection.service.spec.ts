@@ -34,6 +34,7 @@ function aBooking(overrides: Record<string, unknown> = {}) {
     paymentMode: 'cash',
     status: 'completed',
     flatPrice: decimal('599.00'),
+    payableAmount: decimal('599.00'),
     cashCollectedAt: null,
     cashDeclinedAt: null,
     ...overrides,
@@ -69,11 +70,11 @@ describe('CashCollectionService · collect', () => {
 
     await build(deps).collect('pro-1', 'bk-1');
 
-    // What reaches the column is the booking's own frozen `flatPrice`, by
+    // What reaches the column is the booking's own frozen `payableAmount`, by
     // identity — not a figure derived from anything the caller supplied.
     // `collect` takes no amount parameter at all, which the compiler enforces.
     const written = deps.tx.booking.update.mock.calls[0][0].data;
-    expect(written.cashCollectedAmount).toBe(booking.flatPrice);
+    expect(written.cashCollectedAmount).toBe(booking.payableAmount);
     expect(written.paymentStatus).toBe('paid');
   });
 

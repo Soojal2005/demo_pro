@@ -16,6 +16,10 @@ import {
   type OrderStatus,
 } from './payments.types';
 import { LEDGER_PORT, type LedgerPort } from './ports/ledger.port';
+import {
+  SUBSCRIPTION_PORT,
+  type SubscriptionPort,
+} from './ports/subscription.port';
 import { RazorpayClient, RazorpayError } from './razorpay.client';
 import { verifyCheckoutSignature } from './razorpay.signature';
 
@@ -31,6 +35,9 @@ export type OrderWithBooking = Order & {
   booking: Prisma.BookingGetPayload<{ select: typeof ORDER_BOOKING_SELECT }>;
 };
 
+/** What an order is buying. */
+export type CheckoutPurpose = 'booking' | 'subscription';
+
 /** What Checkout hands back to the app, and what the app posts to verify. */
 export interface CheckoutHandoff {
   orderId: string;
@@ -38,7 +45,16 @@ export interface CheckoutHandoff {
   keyId: string;
   amount: string;
   currency: string;
-  bookingNumber: string;
+  /**
+   * Which of the two things this payment buys. The app needs it because the
+   * two have different success screens — one lands on a booking, the other on
+   * a plan.
+   */
+  purpose: CheckoutPurpose;
+  /** Booking number, or the plan name. What to show on the checkout sheet. */
+  reference: string;
+  /** Null on a subscription order. Kept so booking clients are unaffected. */
+  bookingNumber: string | null;
   customerName: string | null;
   customerContact: string | null;
 }
@@ -63,6 +79,8 @@ export class OrdersService {
     private readonly settings: PlatformSettingsService,
     @Inject(DISPATCH_PORT) private readonly dispatch: DispatchPort,
     @Inject(LEDGER_PORT) private readonly ledger: LedgerPort,
+    @Inject(SUBSCRIPTION_PORT)
+    private readonly subscriptions: SubscriptionPort,
   ) {}
 
   // ------------------------------------------------------------------
@@ -72,10 +90,15 @@ export class OrdersService {
   /**
    * Server-side order creation, before checkout opens.
    *
-   * The amount is read from `Booking.flatPrice`, which module 4 froze at
-   * creation from the catalogue. It is never taken from the client — that is
+   * The amount is read from `Booking.payableAmount`, which module 4 froze at
+   * creation: the catalogue price less whatever the customer's subscription
+   * and Homingo Coins took off it. It is never taken from the client — that is
    * the whole reason this happens server-side (US-7.1). A client that could
    * name its own amount could book a ₹4,000 deep clean for ₹1.
+   *
+   * **`payableAmount`, not `flatPrice`.** Charging the list price to a
+   * customer who was quoted a discounted one is the single worst bug this
+   * module could have, and the two columns are one character apart.
    */
   async createForBooking(
     bookingId: string,
@@ -162,7 +185,7 @@ export class OrdersService {
     let gatewayOrder;
     try {
       gatewayOrder = await this.razorpay.createOrder({
-        amountPaise: toPaise(booking.flatPrice.toString()),
+        amountPaise: toPaise(booking.payableAmount.toString()),
         currency: 'INR',
         receipt,
         notes,
@@ -177,8 +200,8 @@ export class OrdersService {
         customerId: booking.customerId,
         razorpayOrderId: gatewayOrder.id,
         receipt,
-        amount: booking.flatPrice,
-        amountDue: booking.flatPrice,
+        amount: booking.payableAmount,
+        amountDue: booking.payableAmount,
         currency: gatewayOrder.currency,
         status: 'created',
         notesJson: notes,
@@ -186,6 +209,118 @@ export class OrdersService {
     });
 
     return this.toHandoff(order, { ...booking, customer });
+  }
+
+  /**
+   * The same server-side order creation, for a subscription plan.
+   *
+   * Deliberately a **sibling** of `createForBooking` rather than a
+   * generalisation of it. The two share the gateway call, the receipt scheme
+   * and the reissue rule, and differ in every precondition: a booking checks
+   * payment mode and lifecycle status, a subscription checks that it is still
+   * pending and still belongs to the caller. Merging them would produce one
+   * method with two disjoint halves behind an `if`.
+   *
+   * The amount comes from `CustomerSubscription.pricePaid`, frozen when the
+   * plan was chosen — never from the live `SubscriptionPlan`, and never from
+   * the client. A repricing between choosing a plan and paying for it must not
+   * change what the customer was quoted.
+   */
+  async createForSubscription(
+    subscriptionId: string,
+    customerId: string,
+  ): Promise<CheckoutHandoff> {
+    // Module 16 owns every rule about whether this plan can still be bought,
+    // and throws with the reason if it cannot.
+    const purchasable = await this.subscriptions.getPurchasable(
+      subscriptionId,
+      customerId,
+    );
+
+    const customerRow = await this.prisma.customer.findUnique({
+      where: { id: customerId },
+    });
+    if (!customerRow) {
+      throw apiError('Customer not found', HttpStatus.NOT_FOUND);
+    }
+
+    const existing = await this.prisma.order.findMany({
+      where: { subscriptionId },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (existing.some((order) => order.status === 'paid')) {
+      throw apiError(
+        'This plan has already been paid for',
+        HttpStatus.CONFLICT,
+        [
+          {
+            field: 'subscriptionId',
+            message: 'A paid order already exists',
+            code: 'SUBSCRIPTION_ALREADY_PAID',
+          },
+        ],
+      );
+    }
+
+    // Reissue rather than mutate, exactly as a booking does — an expired order
+    // still exists at the gateway with its own attempt history.
+    const reusable = await this.findReusable(existing);
+    if (reusable) {
+      return this.toHandoff(reusable, {
+        purpose: 'subscription',
+        reference: purchasable.planName,
+        bookingNumber: null,
+        customer: customerRow,
+      });
+    }
+
+    const customer = await this.ensureGatewayCustomer(customerRow);
+
+    // `SUB-` prefixed so a receipt is self-describing in Razorpay's dashboard,
+    // where booking receipts already read `HB-2026-000123-1`.
+    const receipt = `SUB-${purchasable.planCode.toUpperCase()}-${subscriptionId.slice(0, 8)}-${existing.length + 1}`;
+    const notes: Record<string, string> = {
+      subscriptionId: purchasable.id,
+      planCode: purchasable.planCode,
+      planName: purchasable.planName,
+      customerId,
+    };
+
+    let gatewayOrder;
+    try {
+      gatewayOrder = await this.razorpay.createOrder({
+        amountPaise: toPaise(purchasable.pricePaid),
+        currency: 'INR',
+        receipt,
+        notes,
+      });
+    } catch (cause) {
+      throw this.gatewayUnavailable(cause, 'create a payment order');
+    }
+
+    const order = await this.prisma.order.create({
+      data: {
+        // Exactly one of the two is set — the database refuses anything else.
+        bookingId: null,
+        subscriptionId: purchasable.id,
+        customerId,
+        razorpayOrderId: gatewayOrder.id,
+        receipt,
+        amount: purchasable.pricePaid,
+        amountDue: purchasable.pricePaid,
+        currency: gatewayOrder.currency,
+        status: 'created',
+        notesJson: notes,
+      },
+    });
+
+    return this.toHandoff(order, {
+      purpose: 'subscription',
+      reference: purchasable.planName,
+      bookingNumber: null,
+      customer,
+    });
   }
 
   /**
@@ -426,6 +561,18 @@ export class OrdersService {
    * customer-visible failure while a missing ledger row is a rebuildable one.
    */
   private async onFirstCapture(order: Order): Promise<void> {
+    // Exactly one of the two is set, enforced by
+    // `orders_exactly_one_subject_check`, so this is a total branch rather
+    // than a guard with a silent fall-through.
+    if (order.subscriptionId) {
+      return this.onSubscriptionCapture(order);
+    }
+    return this.onBookingCapture(order);
+  }
+
+  private async onBookingCapture(order: Order): Promise<void> {
+    if (!order.bookingId) return;
+
     const booking = await this.prisma.booking.findUnique({
       where: { id: order.bookingId },
     });
@@ -459,6 +606,50 @@ export class OrdersService {
   }
 
   /**
+   * The subscription half of first capture.
+   *
+   * Same ordering rule as the booking half, for the same reason: the thing the
+   * customer paid for is handed over **before** the ledger entry. A plan that
+   * took money and never activated is a customer-visible failure; a missing
+   * ledger row is a rebuildable one.
+   *
+   * Activation is non-fatal here. The money is already captured, and throwing
+   * would make Razorpay retry a webhook that has already done its real work —
+   * `applyCapture` is idempotent, so the retry would be harmless but endless.
+   * Module 16's own activation is idempotent too, so ops re-running it by hand
+   * from the admin route costs nothing.
+   */
+  private async onSubscriptionCapture(order: Order): Promise<void> {
+    if (!order.subscriptionId) return;
+
+    try {
+      await this.subscriptions.activateFromPayment(
+        order.subscriptionId,
+        order.capturedPaymentId ?? order.razorpayOrderId,
+      );
+    } catch (error) {
+      this.logger.error(
+        `PAID BUT NOT ACTIVATED: order ${order.razorpayOrderId} captured for ` +
+          `subscription ${order.subscriptionId}, but activation failed. The ` +
+          'customer has been charged and has no plan — activate it from ' +
+          'POST /admin/loyalty/subscriptions/:id/activate.',
+        error instanceof Error ? error.stack : String(error),
+      );
+    }
+
+    await this.ledger.recordCapture({
+      // Not a booking. `LedgerEntry.bookingId` is nullable, and the entry is
+      // keyed on the order either way.
+      bookingId: null,
+      subscriptionId: order.subscriptionId,
+      orderId: order.id,
+      razorpayPaymentId: order.capturedPaymentId ?? '',
+      customerId: order.customerId,
+      amount: order.amountPaid.toString(),
+    });
+  }
+
+  /**
    * `payment.authorized` — money is held, not taken.
    *
    * Deliberately does **not** dispatch. An authorized payment can still fail
@@ -479,7 +670,12 @@ export class OrdersService {
 
     // Only when nothing better has happened. A late `authorized` arriving
     // after a capture must not walk the booking back from paid.
-    if (order.status !== 'paid') {
+    //
+    // A subscription order has no booking to mark, and an authorization is not
+    // an activation either way — the plan goes live on capture and nowhere
+    // else, which is the whole reason this method deliberately does not
+    // dispatch.
+    if (order.status !== 'paid' && order.bookingId) {
       await this.prisma.booking.updateMany({
         where: { id: order.bookingId, paymentStatus: 'unpaid' },
         data: { paymentStatus: 'authorized' },
@@ -606,20 +802,27 @@ export class OrdersService {
 
   private toHandoff(
     order: Order,
-    booking: {
-      bookingNumber: string;
+    subject: {
+      purpose?: CheckoutPurpose;
+      reference?: string;
+      bookingNumber: string | null;
       customer: { fullName: string | null; phone: string | null };
     },
   ): CheckoutHandoff {
+    const purpose: CheckoutPurpose =
+      subject.purpose ?? (order.subscriptionId ? 'subscription' : 'booking');
+
     return {
       orderId: order.id,
       razorpayOrderId: order.razorpayOrderId,
       keyId: this.razorpay.publicKeyId,
       amount: order.amount.toString(),
       currency: order.currency,
-      bookingNumber: booking.bookingNumber,
-      customerName: booking.customer.fullName,
-      customerContact: booking.customer.phone,
+      purpose,
+      reference: subject.reference ?? subject.bookingNumber ?? order.receipt,
+      bookingNumber: subject.bookingNumber,
+      customerName: subject.customer.fullName,
+      customerContact: subject.customer.phone,
     };
   }
 

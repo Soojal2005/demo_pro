@@ -3,7 +3,14 @@ import { Injectable, Logger } from '@nestjs/common';
 export const LEDGER_PORT = Symbol('LEDGER_PORT');
 
 export interface CaptureEntry {
-  bookingId: string;
+  /**
+   * Null when the capture bought a subscription rather than a booking. The
+   * entry is keyed on `orderId` either way, so nothing downstream needs a
+   * booking to record the money.
+   */
+  bookingId: string | null;
+  /** Set instead of `bookingId` for a subscription purchase. */
+  subscriptionId?: string | null;
   orderId: string;
   razorpayPaymentId: string;
   customerId: string;
@@ -18,7 +25,8 @@ export interface CashCollectionEntry {
 }
 
 export interface RefundEntry {
-  bookingId: string;
+  /** Null when the refund reverses a subscription purchase, not a booking. */
+  bookingId: string | null;
   orderId: string;
   razorpayPaymentId: string;
   razorpayRefundId: string;

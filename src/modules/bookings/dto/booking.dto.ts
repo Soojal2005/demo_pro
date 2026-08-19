@@ -51,9 +51,37 @@ export class BookingDto {
     type: String,
     example: '599.00',
     description:
-      'Frozen at creation. A STRING, not a number — never parseFloat a total.',
+      'The **catalogue** price, frozen at creation. Not necessarily what the ' +
+      'customer was charged — see `payableAmount`. A STRING, not a number: ' +
+      'never parseFloat a total.',
   })
   flatPrice: string;
+
+  @ApiProperty({
+    type: String,
+    example: '499.00',
+    description:
+      '**What the customer is actually charged** — `flatPrice` less any plan ' +
+      'discount and coins spent. Every money path reads this: the gateway ' +
+      'order, the cash a Pro collects, the invoice and the refund.',
+  })
+  payableAmount: string;
+
+  @ApiProperty({
+    type: String,
+    example: '100.00',
+    description: 'Plan discount plus coin value. `0.00` when undiscounted.',
+  })
+  discountAmount: string;
+
+  @ApiProperty({
+    type: Number,
+    example: 100,
+    description:
+      'Homingo Coins spent. Returned in full if the booking is cancelled, ' +
+      'whatever cancellation fee applies.',
+  })
+  coinsRedeemed: number;
 
   @ApiProperty({ enum: PAYMENT_MODES })
   paymentMode: string;

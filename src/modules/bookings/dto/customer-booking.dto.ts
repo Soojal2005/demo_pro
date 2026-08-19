@@ -84,11 +84,39 @@ export class CustomerBookingDto {
   @ApiProperty({
     type: Number,
     description:
-      'The frozen price, as a number for display. The authoritative decimal ' +
-      'stays on `BookingDto.flatPrice`; nothing financial should be settled ' +
-      'from this field.',
+      '**What the customer is charged**, as a number for display — the ' +
+      'catalogue price less any plan discount and coins spent. The ' +
+      'authoritative decimal stays on `BookingDto.payableAmount`; nothing ' +
+      'financial should be settled from this field.',
   })
   price: number;
+
+  @ApiPropertyOptional({
+    type: Number,
+    nullable: true,
+    description:
+      'The catalogue price before any discount — the struck-through figure. ' +
+      '**Null when nothing was discounted**, so a client never renders a ' +
+      '"was" price identical to the "now" price.',
+  })
+  listPrice: number | null;
+
+  @ApiPropertyOptional({
+    type: Number,
+    nullable: true,
+    description:
+      'Plan discount plus coin redemption, together. Null when there was no ' +
+      'discount. Equals `listPrice - price`.',
+  })
+  discountAmount: number | null;
+
+  @ApiProperty({
+    type: Number,
+    description:
+      'Homingo Coins spent on this booking. Returned to the wallet in full if ' +
+      'it is cancelled, whatever cancellation fee applies.',
+  })
+  coinsRedeemed: number;
 
   @ApiProperty({ enum: PAYMENT_STATUSES })
   paymentStatus: string;

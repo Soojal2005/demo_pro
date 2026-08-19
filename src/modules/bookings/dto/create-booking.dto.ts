@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsDate, IsIn, IsOptional, IsUUID } from 'class-validator';
+import { IsDate, IsIn, IsInt, IsOptional, Min, IsUUID } from 'class-validator';
 import { PAYMENT_MODES, type PaymentMode } from '../booking.types';
 
 /**
@@ -42,4 +42,19 @@ export class CreateBookingDto {
   @Type(() => Date)
   @IsDate()
   slotStartAt?: Date;
+
+  @ApiPropertyOptional({
+    description:
+      'Homingo Coins to spend on this booking. Silently clamped to the balance ' +
+      'you hold and to the platform redemption ceiling — asking for more than ' +
+      'either is not an error, it just spends what is allowed. Call ' +
+      'POST /bookings/quote first to see the ceiling.',
+    minimum: 0,
+    example: 150,
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  coinsToRedeem?: number;
 }

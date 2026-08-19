@@ -17,7 +17,18 @@ function buildDeps() {
       create: jest.fn(),
       update: jest.fn(),
     },
-    customer: { update: jest.fn() },
+    customer: {
+      update: jest.fn(),
+      findUnique: jest.fn((): Promise<unknown> =>
+        Promise.resolve({
+          id: 'cust-1',
+          fullName: 'A Customer',
+          phone: '+919000000000',
+          email: null,
+          razorpayCustomerId: 'cust_rzp',
+        }),
+      ),
+    },
   };
   const razorpay = {
     createOrder: jest.fn(),
@@ -30,7 +41,20 @@ function buildDeps() {
   const settings = { getNumber: jest.fn().mockResolvedValue(15) };
   const dispatch = { requestAssignment: jest.fn() };
   const ledger = { recordCapture: jest.fn() };
-  return { prisma, razorpay, state, settings, dispatch, ledger };
+  const subscriptions = {
+    getPurchasable: jest.fn((): Promise<unknown> =>
+      Promise.resolve({
+        id: 'sub-1',
+        customerId: 'cust-1',
+        planCode: 'homingo_gold',
+        planName: 'Homingo Gold',
+        pricePaid: '699.00',
+        status: 'pending_payment',
+      }),
+    ),
+    activateFromPayment: jest.fn((): Promise<void> => Promise.resolve()),
+  };
+  return { prisma, razorpay, state, settings, dispatch, ledger, subscriptions };
 }
 
 function build(deps: ReturnType<typeof buildDeps>): OrdersService {
@@ -41,6 +65,7 @@ function build(deps: ReturnType<typeof buildDeps>): OrdersService {
     deps.settings as never,
     deps.dispatch as never,
     deps.ledger as never,
+    deps.subscriptions as never,
   );
 }
 
@@ -84,6 +109,7 @@ describe('OrdersService · creation', () => {
       paymentMode: 'online',
       status: 'awaiting_payment',
       flatPrice: decimal('599.00'),
+      payableAmount: decimal('599.00'),
       customer: {
         id: 'cust-1',
         razorpayCustomerId: 'cust_rzp',
@@ -118,6 +144,7 @@ describe('OrdersService · creation', () => {
       paymentMode: 'online',
       status: 'awaiting_payment',
       flatPrice: decimal('599.00'),
+      payableAmount: decimal('599.00'),
       customer: {
         id: 'cust-1',
         razorpayCustomerId: 'c',
@@ -492,5 +519,153 @@ describe('OrdersService · applyFailure', () => {
         data: expect.objectContaining({ failureCode: 'BAD_REQUEST_ERROR' }),
       }),
     );
+  });
+});
+
+describe('OrdersService · buying a subscription online', () => {
+  it('takes the amount from the subscription, never from the caller', async () => {
+    // Same rule as a booking order and for the same reason (US-7.1): a client
+    // that could name its own amount could buy a ₹1,499 plan for ₹1.
+    const deps = buildDeps();
+    deps.prisma.order.findMany.mockResolvedValue([]);
+    deps.razorpay.createOrder.mockResolvedValue({
+      id: 'order_SUB1',
+      currency: 'INR',
+    });
+    deps.prisma.order.create.mockResolvedValue(
+      anOrder({
+        id: 'order-row-sub',
+        bookingId: null,
+        subscriptionId: 'sub-1',
+        razorpayOrderId: 'order_SUB1',
+        amount: decimal('699.00'),
+      }),
+    );
+
+    const handoff = await build(deps).createForSubscription('sub-1', 'cust-1');
+
+    expect(deps.razorpay.createOrder).toHaveBeenCalledWith(
+      expect.objectContaining({ amountPaise: 69_900 }),
+    );
+    expect(handoff.amount).toBe('699.00');
+    expect(handoff.purpose).toBe('subscription');
+    expect(handoff.reference).toBe('Homingo Gold');
+    // A subscription is not a booking, and the app must not be able to read
+    // one out of this response.
+    expect(handoff.bookingNumber).toBeNull();
+  });
+
+  it('writes an order that belongs to the subscription and to no booking', async () => {
+    const deps = buildDeps();
+    deps.prisma.order.findMany.mockResolvedValue([]);
+    deps.razorpay.createOrder.mockResolvedValue({
+      id: 'order_SUB1',
+      currency: 'INR',
+    });
+    deps.prisma.order.create.mockResolvedValue(
+      anOrder({ bookingId: null, subscriptionId: 'sub-1' }),
+    );
+
+    await build(deps).createForSubscription('sub-1', 'cust-1');
+
+    const written = deps.prisma.order.create.mock.calls[0][0].data;
+    // `orders_exactly_one_subject_check` refuses anything else.
+    expect(written.bookingId).toBeNull();
+    expect(written.subscriptionId).toBe('sub-1');
+    expect(written.notesJson).toMatchObject({ planCode: 'homingo_gold' });
+  });
+
+  it('refuses a plan that has already been paid for', async () => {
+    const deps = buildDeps();
+    deps.prisma.order.findMany.mockResolvedValue([
+      anOrder({ status: 'paid', subscriptionId: 'sub-1', bookingId: null }),
+    ]);
+
+    await expect(
+      statusOf(build(deps).createForSubscription('sub-1', 'cust-1')),
+    ).resolves.toBe(409);
+    expect(deps.razorpay.createOrder).not.toHaveBeenCalled();
+  });
+
+  it('lets module 16 refuse before any gateway order exists', async () => {
+    // Everything that can invalidate the purchase is checked in
+    // `getPurchasable`, so nothing has to refuse after a card is charged.
+    const deps = buildDeps();
+    deps.subscriptions.getPurchasable.mockRejectedValue(
+      new Error('not purchasable'),
+    );
+
+    await expect(
+      build(deps).createForSubscription('sub-1', 'cust-1'),
+    ).rejects.toThrow('not purchasable');
+    expect(deps.razorpay.createOrder).not.toHaveBeenCalled();
+    expect(deps.prisma.order.create).not.toHaveBeenCalled();
+  });
+
+  it('activates the plan on first capture, then books the money', async () => {
+    // Ordering matters: the customer gets what they paid for before the
+    // ledger entry, because a plan that took money and never activated is a
+    // customer-visible failure and a missing ledger row is rebuildable.
+    const deps = buildDeps();
+    const order = anOrder({
+      bookingId: null,
+      subscriptionId: 'sub-1',
+      status: 'created',
+      amount: decimal('699.00'),
+    });
+    deps.prisma.order.findUnique.mockResolvedValue(order);
+    deps.prisma.order.update.mockResolvedValue({
+      ...order,
+      status: 'paid',
+      capturedPaymentId: 'pay_XYZ',
+      amountPaid: decimal('699.00'),
+    });
+
+    await build(deps).applyCapture({
+      razorpayOrderId: 'order_ABC',
+      razorpayPaymentId: 'pay_XYZ',
+      amountPaise: 69_900,
+    });
+
+    expect(deps.subscriptions.activateFromPayment).toHaveBeenCalledWith(
+      'sub-1',
+      'pay_XYZ',
+    );
+    // The booking half must not run at all — there is no booking.
+    expect(deps.prisma.booking.update).not.toHaveBeenCalled();
+    expect(deps.ledger.recordCapture).toHaveBeenCalledWith(
+      expect.objectContaining({ bookingId: null, subscriptionId: 'sub-1' }),
+    );
+  });
+
+  it('still books the money when activation fails', async () => {
+    // The money is captured either way. Throwing here would make Razorpay
+    // retry a webhook that has already done its real work.
+    const deps = buildDeps();
+    const order = anOrder({
+      bookingId: null,
+      subscriptionId: 'sub-1',
+      amount: decimal('699.00'),
+    });
+    deps.prisma.order.findUnique.mockResolvedValue(order);
+    deps.prisma.order.update.mockResolvedValue({
+      ...order,
+      status: 'paid',
+      capturedPaymentId: 'pay_XYZ',
+      amountPaid: decimal('699.00'),
+    });
+    deps.subscriptions.activateFromPayment.mockRejectedValue(
+      new Error('loyalty down'),
+    );
+
+    await expect(
+      build(deps).applyCapture({
+        razorpayOrderId: 'order_ABC',
+        razorpayPaymentId: 'pay_XYZ',
+        amountPaise: 69_900,
+      }),
+    ).resolves.toBeDefined();
+
+    expect(deps.ledger.recordCapture).toHaveBeenCalled();
   });
 });

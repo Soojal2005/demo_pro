@@ -37,6 +37,7 @@ model City {
   uiConfigs                UiConfig[]
   areas                    Area[]
   incentives               Incentive[]
+  subscriptionPlans        SubscriptionPlan[]
 
   @@index([isActive])
   @@map("cities")
@@ -314,6 +315,8 @@ model AdminUser {
   acknowledgedSosAlerts        SosAlert[]                  @relation("SosAcknowledger")
   resolvedSosAlerts            SosAlert[]                  @relation("SosResolver")
   assignedSupportTickets       SupportTicket[]             @relation("TicketAssignee")
+  walletAdjustments            WalletTransaction[]         @relation("WalletAdjuster")
+  cancelledSubscriptions       CustomerSubscription[]      @relation("SubscriptionCanceller")
 
   @@map("admin_users")
 }
@@ -369,6 +372,16 @@ model Customer {
   notificationLogs   NotificationLog[]
   sosAlerts          SosAlert[]
   supportTickets     SupportTicket[]
+
+  // Module 16.
+  wallet             CustomerWallet?
+  walletTransactions WalletTransaction[]
+  subscriptions      CustomerSubscription[]
+  referralCode       ReferralCode?
+  /// Everyone this customer brought in.
+  referralsMade      Referral[]             @relation("ReferralsMade")
+  /// At most one, ever — `Referral.refereeId` is unique.
+  referralReceived   Referral?              @relation("ReferralReceived")
 
   @@index([status, createdAt])
   @@map("customers")
@@ -703,8 +716,50 @@ model Booking {
   slotEndAt   DateTime?
 
   /// Frozen at creation from Service.flatPrice. Never recomputed from the live
-  /// catalogue — US-3.2, US-3.5.
+  /// catalogue — US-3.2, US-3.5. **This is the list price, not what is
+  /// charged** — see `payableAmount` below.
   flatPrice Decimal @db.Decimal(12, 2)
+
+  // --- Module 16 · what the customer actually pays ---------------------
+  //
+  // `flatPrice` deliberately keeps meaning "the price of this service, frozen
+  // at creation", because the invoice, the commission rate and every historic
+  // report are written against it. Discounts are recorded *beside* it rather
+  // than folded into it, so "we gave this household ₹120 of coins" survives as
+  // a fact instead of disappearing into a smaller number.
+  //
+  // All four are frozen at creation with the rest of the price. Nothing
+  // recomputes them: a customer who redeemed coins against a booking has spent
+  // those coins, and a later change to the conversion rate must not re-price a
+  // job somebody already agreed to.
+
+  /// Coins spent on this booking. Debited from the wallet in the same
+  /// transaction that writes the row, and credited back on cancellation.
+  coinsRedeemed              Int     @default(0)
+  /// Rupee value of `coinsRedeemed`, at the rate in force at creation.
+  walletDiscountAmount       Decimal @default(0) @db.Decimal(12, 2)
+  /// The active subscription's percentage, applied before coins and after the
+  /// plan's own per-booking cap.
+  subscriptionDiscountAmount Decimal @default(0) @db.Decimal(12, 2)
+  /// The two above, summed. Never exceeds `flatPrice`.
+  discountAmount             Decimal @default(0) @db.Decimal(12, 2)
+  /// `flatPrice - discountAmount`. **What the gateway charges and what a Pro
+  /// collects in cash** — every money path reads this, never `flatPrice`.
+  payableAmount              Decimal @db.Decimal(12, 2)
+
+  /// The subscription that discounted this booking, frozen. Null when the
+  /// customer had none, or when the plan's `includedBookings` was exhausted.
+  subscriptionId String?               @db.Uuid
+  subscription   CustomerSubscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+
+  /// How many times the slot has been moved. The reschedule allowance is
+  /// counted against this, not against the row count, so an ops move made on
+  /// the customer's behalf is visible in the same number.
+  rescheduleCount     Int       @default(0)
+  /// The slot this booking was originally sold for. Written on the *first*
+  /// reschedule only, so the original promise survives however many moves
+  /// follow.
+  originalSlotStartAt DateTime?
 
   /// online | cash — FROZEN at creation. Forks the state machine: a cash
   /// booking skips awaiting_payment and has no Order row at all.
@@ -801,6 +856,13 @@ model Booking {
   notificationLogs     NotificationLog[]
   sosAlerts            SosAlert[]
   supportTickets       SupportTicket[]
+
+  // Module 16.
+  walletTransactions WalletTransaction[]
+  reschedules        BookingReschedule[]
+  /// At most one — `Referral.qualifyingBookingId` is unique, so one completed
+  /// job can never pay two referral rewards.
+  qualifiedReferral  Referral?
 
   @@index([proId, status])
   @@index([customerId, createdAt])
@@ -912,8 +974,21 @@ model Order {
   updatedAt DateTime @updatedAt
 
   /// A booking may have several orders — expired, voided, reissued.
-  bookingId  String   @db.Uuid
-  booking    Booking  @relation(fields: [bookingId], references: [id], onDelete: Restrict)
+  ///
+  /// **Nullable since module 16.** An `Order` is the gateway side of one thing
+  /// the customer is buying, and that is now either a booking or a
+  /// subscription. Exactly one of `bookingId` and `subscriptionId` is set, and
+  /// a CHECK constraint refuses a row with neither or both — the alternative
+  /// was a second `SubscriptionOrder` table duplicating every column, every
+  /// webhook path and the reconciliation loop, which is the mistake conflicts
+  /// #1 and #13 record. See CONFLICTS_AND_DECISIONS #75.
+  bookingId String?  @db.Uuid
+  booking   Booking? @relation(fields: [bookingId], references: [id], onDelete: Restrict)
+
+  /// Set instead of `bookingId` when this order buys a subscription plan.
+  subscriptionId String?               @db.Uuid
+  subscription   CustomerSubscription? @relation(fields: [subscriptionId], references: [id], onDelete: Restrict)
+
   customerId String   @db.Uuid
   customer   Customer @relation(fields: [customerId], references: [id], onDelete: Restrict)
 
@@ -963,6 +1038,7 @@ model Order {
   ledgerEntries            LedgerEntry[]
 
   @@index([bookingId, createdAt])
+  @@index([subscriptionId, createdAt])
   @@index([customerId, createdAt])
   @@index([status])
   @@index([refundStatus])
@@ -2135,4 +2211,356 @@ model TicketMessage {
 
   @@index([ticketId, sentAt])
   @@map("ticket_messages")
+}
+
+// =====================================================================
+// 16 · LOYALTY — WALLET, SUBSCRIPTIONS & REFERRALS
+// =====================================================================
+
+/// A customer's Homingo Coins balance.
+///
+/// One row per customer, created lazily on first credit — a guest who has
+/// never completed a job does not need one, and creating it at signup would
+/// put an empty row against every abandoned device id.
+///
+/// **`balanceCoins` is a cache.** The truth is `sum(WalletTransaction.coins)`,
+/// for the same reason `Pro.cashInHand` is a cache of the ledger: the running
+/// total is what every read wants, and recomputing it from the log on each
+/// booking quote would scan the customer's whole history. The two are
+/// reconciled by the same nightly rebuild that corrects the other counters,
+/// and **the log wins** on disagreement.
+model CustomerWallet {
+  id        String   @id @default(uuid()) @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  customerId String   @unique @db.Uuid
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  balanceCoins Int @default(0)
+
+  /// Never decremented. Lifetime earned is what tier is computed from, so a
+  /// customer who spends their balance does not fall back down a tier.
+  lifetimeEarnedCoins   Int @default(0)
+  lifetimeRedeemedCoins Int @default(0)
+  lifetimeExpiredCoins  Int @default(0)
+
+  /// Frozen copy of the tier the last credit was earned at, so a receipt can
+  /// say why the customer got the coins they did. Recomputed on every earn.
+  tier String @default("bronze")
+
+  transactions WalletTransaction[]
+
+  @@map("customer_wallets")
+}
+
+/// The append-only log behind the balance.
+///
+/// Modelled on `LedgerEntry` rather than on a mutable balance column: every
+/// movement carries its own `sourceRef`, so a retried completion or a re-run
+/// sweeper credits once. It is deliberately **not** in the money ledger —
+/// coins are a discount entitlement, not currency, and mixing them into a hash
+/// chain that must reconcile against Razorpay would make every coin grant a
+/// finance event.
+model WalletTransaction {
+  id        String   @id @default(uuid()) @db.Uuid
+  createdAt DateTime @default(now())
+
+  walletId String         @db.Uuid
+  wallet   CustomerWallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+
+  /// Denormalised so "this customer's coin history" is one indexed read and
+  /// never a join through the wallet.
+  customerId String   @db.Uuid
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  /// earn | redeem | redeem_reversal | referral | signup_bonus |
+  /// subscription_bonus | expire | adjustment
+  type String
+
+  /// **Signed.** Positive credits, negative debits. Never zero — a movement of
+  /// nothing is not a movement, and a zero row would make `balanceAfter`
+  /// ambiguous when two land in the same millisecond.
+  coins Int
+
+  /// The balance this row produced, written under the same row lock that read
+  /// it. What makes a statement reconstructable without re-summing.
+  balanceAfter Int
+
+  /// What the coins were worth in rupees at the moment they moved, frozen.
+  /// The conversion rate is a `PlatformSetting` and can be changed; a receipt
+  /// must keep saying what the customer actually got.
+  rupeeValue Decimal @db.Decimal(12, 2)
+
+  bookingId String?  @db.Uuid
+  booking   Booking? @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+
+  referralId String?   @db.Uuid
+  referral   Referral? @relation(fields: [referralId], references: [id], onDelete: SetNull)
+
+  subscriptionId String?               @db.Uuid
+  subscription   CustomerSubscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+
+  /// Set on admin adjustments only — the one movement with a human behind it.
+  adjustedByAdminId String?    @db.Uuid
+  adjustedByAdmin   AdminUser? @relation("WalletAdjuster", fields: [adjustedByAdminId], references: [id], onDelete: SetNull)
+
+  /// Customer-facing. Shown verbatim in the coin statement, so it is written
+  /// for a customer to read and not for a log grep.
+  reason String
+
+  /// Exactly-once key — `earn:<bookingId>`, `referral:<referralId>:referrer`.
+  /// Same mechanism and same purpose as `LedgerEntry.sourceRef`.
+  sourceRef String @unique
+
+  /// Null means never expires. Set from `wallet.coinExpiryDays` at credit
+  /// time, so a later change to the setting cannot retroactively expire coins
+  /// already granted.
+  expiresAt DateTime?
+  /// Set when the expiry sweep has consumed this credit, so it is never
+  /// expired twice.
+  expiredAt DateTime?
+
+  @@index([customerId, createdAt])
+  @@index([walletId, createdAt])
+  @@index([bookingId])
+  // The expiry sweep's only query: live credits, oldest first.
+  @@index([expiresAt, expiredAt])
+  @@map("wallet_transactions")
+}
+
+/// A plan a customer can buy. Catalogue, not an entitlement.
+///
+/// Priced and configured entirely in rows rather than in code, for the same
+/// reason `Service` is: marketing changes what a plan gives away far more
+/// often than engineering deploys.
+model SubscriptionPlan {
+  id        String   @id @default(uuid()) @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// Stable machine name — `homingo_plus`. What a client keys off, so it can
+  /// survive the marketing team renaming the plan.
+  code        String  @unique
+  name        String
+  description String?
+
+  /// silver | gold | platinum. Orders plans against each other for upgrade
+  /// arithmetic; `sortOrder` only decides display.
+  tier      String
+  sortOrder Int    @default(0)
+
+  priceAmount  Decimal @db.Decimal(12, 2)
+  durationDays Int
+
+  /// Percent off every booking while the subscription is active.
+  discountPercent   Decimal  @default(0) @db.Decimal(5, 2)
+  /// Caps the percent above. Null means uncapped.
+  maxDiscountAmount Decimal? @db.Decimal(12, 2)
+
+  /// Multiplies coins earned per completed booking. 2.00 = double coins.
+  coinEarnMultiplier Decimal @default(1) @db.Decimal(5, 2)
+  /// Granted once, on activation.
+  bonusCoins         Int     @default(0)
+
+  /// The subscriber's headline perk in the cancellation flow: the late-cancel
+  /// and window-D fees are waived outright.
+  waivesCancellationFee Boolean @default(false)
+  /// Extra free reschedules on top of `booking.maxReschedules`.
+  extraReschedules      Int     @default(0)
+  /// Intended as a dispatch tiebreak. **Nothing consumes it yet** — see the
+  /// module 16 notes in MODULE_STATUS_REPORT.md.
+  priorityDispatch      Boolean @default(false)
+
+  /// How many bookings the discount applies to per cycle. Null = unlimited.
+  includedBookings Int?
+
+  /// Null means every city. A plan scoped to a city is only purchasable by a
+  /// customer whose booking address is in it.
+  cityId String? @db.Uuid
+  city   City?   @relation(fields: [cityId], references: [id], onDelete: Restrict)
+
+  isActive Boolean @default(true)
+
+  subscriptions CustomerSubscription[]
+
+  @@index([isActive, sortOrder])
+  @@index([cityId, isActive])
+  @@map("subscription_plans")
+}
+
+/// One customer's purchase of a plan.
+///
+/// Everything the plan gave is **copied onto this row at activation**, exactly
+/// as `Booking.flatPrice` is frozen from `Service`: a customer who bought 15%
+/// off keeps 15% off for the whole cycle, whatever marketing does to the plan
+/// next week.
+model CustomerSubscription {
+  id        String   @id @default(uuid()) @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  customerId String           @db.Uuid
+  customer   Customer         @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  planId     String           @db.Uuid
+  plan       SubscriptionPlan @relation(fields: [planId], references: [id], onDelete: Restrict)
+
+  /// pending_payment | active | expired | cancelled
+  status String @default("pending_payment")
+
+  /// What was actually charged, frozen against a later reprice.
+  pricePaid        Decimal @db.Decimal(12, 2)
+  /// online | cash | complimentary
+  paymentMode      String  @default("online")
+  /// Razorpay order id, or the ops reference for a complimentary grant.
+  /// Deliberately not a foreign key to `Order`: an `Order` row requires a
+  /// booking, and a subscription is not one.
+  paymentReference String?
+
+  activatedAt DateTime?
+  expiresAt   DateTime?
+
+  /// Frozen entitlements — see the model comment.
+  discountPercent       Decimal  @default(0) @db.Decimal(5, 2)
+  maxDiscountAmount     Decimal? @db.Decimal(12, 2)
+  coinEarnMultiplier    Decimal  @default(1) @db.Decimal(5, 2)
+  waivesCancellationFee Boolean  @default(false)
+  extraReschedules      Int      @default(0)
+  includedBookings      Int?
+
+  /// Incremented every time this subscription discounts a booking, so
+  /// `includedBookings` can be enforced without counting bookings.
+  bookingsUsed Int @default(0)
+
+  autoRenew Boolean @default(false)
+
+  cancelledAt        DateTime?
+  cancelReason       String?
+  cancelledByAdminId String?    @db.Uuid
+  cancelledByAdmin   AdminUser? @relation("SubscriptionCanceller", fields: [cancelledByAdminId], references: [id], onDelete: SetNull)
+
+  bookings           Booking[]
+  walletTransactions WalletTransaction[]
+  /// Plural for the same reason a booking's is: an expired or voided order is
+  /// reissued rather than mutated, so the gateway history stays readable.
+  orders             Order[]
+
+  @@index([customerId, status])
+  @@index([status, expiresAt])
+  @@index([planId, status])
+  @@map("customer_subscriptions")
+}
+
+/// A customer's shareable code. One per customer, minted on first request.
+///
+/// Separate from `Referral` because the code outlives any single use and is
+/// what the share sheet needs — a customer asking "what is my code" must not
+/// trigger a scan of everyone they have ever referred.
+model ReferralCode {
+  id        String   @id @default(uuid()) @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  customerId String   @unique @db.Uuid
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  /// Upper-case, ambiguity-free alphabet. Unique platform-wide.
+  code String @unique
+
+  /// Counters, incremented on write and rebuilt nightly like every other one
+  /// in this schema. `Referral` is the source.
+  totalReferrals   Int @default(0)
+  qualifiedCount   Int @default(0)
+  totalCoinsEarned Int @default(0)
+
+  /// An abuse brake ops can pull on one account without disabling the feature.
+  isBlocked     Boolean @default(false)
+  blockedReason String?
+
+  @@map("referral_codes")
+}
+
+/// One person referring one other person, and what happened next.
+///
+/// **The reward is not paid at signup.** It is paid when the referee's first
+/// booking *completes*, because a signup costs an attacker nothing and a
+/// completed job costs them a real payment at a real address. `status` is the
+/// record of where in that journey this pair is.
+model Referral {
+  id        String   @id @default(uuid()) @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  referrerId String   @db.Uuid
+  referrer   Customer @relation("ReferralsMade", fields: [referrerId], references: [id], onDelete: Cascade)
+
+  /// Unique: a customer can be referred exactly once, ever. This constraint is
+  /// the whole anti-farming story — without it, the same phone re-signing up
+  /// is an income stream.
+  refereeId String   @unique @db.Uuid
+  referee   Customer @relation("ReferralReceived", fields: [refereeId], references: [id], onDelete: Cascade)
+
+  /// The code as typed, frozen. `ReferralCode.code` could in principle be
+  /// reissued; this must keep saying what was entered.
+  code String
+
+  /// pending | qualified | rewarded | expired | rejected
+  status String @default("pending")
+
+  /// The booking whose completion qualified it.
+  qualifyingBookingId String?  @unique @db.Uuid
+  qualifyingBooking   Booking? @relation(fields: [qualifyingBookingId], references: [id], onDelete: SetNull)
+
+  /// Frozen at attribution from the `referral.*Coins` settings, so a settings
+  /// change cannot alter what a pending referral was promised.
+  referrerCoins Int @default(0)
+  refereeCoins  Int @default(0)
+
+  qualifiedAt DateTime?
+  rewardedAt  DateTime?
+  /// Set at attribution from `referral.qualifyWindowDays`. A referral that
+  /// never books is not owed forever.
+  expiresAt   DateTime?
+
+  rejectedReason String?
+
+  walletTransactions WalletTransaction[]
+
+  @@index([referrerId, status])
+  @@index([status, expiresAt])
+  @@map("referrals")
+}
+
+/// One move of a booking's slot. Append-only, like `BookingStatusEvent`.
+///
+/// A reschedule is not an edit of `slotStartAt` — it is an event with a
+/// before, an after and a reason, and "how many times has this customer moved
+/// this job" is a question the fee policy has to answer.
+model BookingReschedule {
+  id        String   @id @default(uuid()) @db.Uuid
+  createdAt DateTime @default(now())
+
+  bookingId String  @db.Uuid
+  booking   Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  fromSlotStartAt DateTime
+  toSlotStartAt   DateTime
+  toSlotEndAt     DateTime
+
+  /// Hours between the request and the slot it moved away from. Frozen,
+  /// because it is the number the policy was applied to, and recomputing it
+  /// later from `createdAt` would drift with clock changes.
+  hoursBeforeSlot Decimal @db.Decimal(8, 2)
+
+  /// customer | ops. Never `pro` — the same rule as cancellation.
+  requestedByType String
+  requestedById   String?
+  reason          String?
+
+  /// Charged only outside the free window, and waived entirely for a
+  /// subscriber whose plan says so.
+  feeAmount Decimal @default(0) @db.Decimal(12, 2)
+
+  @@index([bookingId, createdAt])
+  @@map("booking_reschedules")
 }

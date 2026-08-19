@@ -59,8 +59,15 @@ export const toProBookings = (rows: Booking[]): ProBookingView[] =>
  * tag-level detail behind them stays on `GET customer-advisory`, which is
  * aggregated and names nobody.
  *
- * `service` carries the name and the sold duration. `flatPrice` is already on
- * the row, and for a cash job it is the exact sum to collect.
+ * `service` carries the name and the sold duration.
+ *
+ * **The sum to collect on a cash job is `payableAmount`, not `flatPrice`.**
+ * They were the same number until module 16; they are not any more. A customer
+ * who put coins or a plan discount against a ₹500 job owes ₹350 at the door,
+ * and a Pro insisting on ₹500 because the app told them to is the argument
+ * this note exists to prevent. `CashCollectionService` reads the same column
+ * and takes no amount parameter, so the app cannot disagree with the ledger —
+ * but the Pro still has to be shown the right figure.
  */
 export const PRO_JOB_INCLUDE = {
   service: { select: { name: true, durationMinutes: true } },

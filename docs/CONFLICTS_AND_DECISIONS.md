@@ -90,6 +90,15 @@ Decisions here are binding. If one turns out wrong, change it here first.
 | 64  | ERD/persona say Admin OTP; legacy implementation used Firebase                  | 1/15     | Use Slide phone OTP for Admin; retain Firebase exchange only for linked legacy rows            |
 | 65  | Payment attempts are dashboard-only in prose but have a live read API           | 7/15     | Keep the Razorpay read-through API; still store no local attempt rows                          |
 | 66  | NotificationLog requires a recipient FK, but signup OTP precedes the user row   | 1/12     | Permit zero recipient FKs for pre-auth OTP only; retain actor type and masked destination      |
+| 67  | `flatPrice` was both the list price and the amount charged                      | 4/7/16   | `payableAmount` added; every money path reads it. `flatPrice` keeps meaning list price         |
+| 68  | Are Homingo Coins currency, and do they belong in the ledger?                   | 9/16     | No. A discount entitlement with its own append-only log, outside the hash chain                |
+| 69  | The six cancellation windows are decided by status alone                        | 4/16     | Status keeps deciding mechanics; a second axis — hours to the slot — decides the fee           |
+| 70  | Reschedule inside the cutoff: charge for it or refuse it?                       | 4/16     | Refuse. Ops bypasses the allowance but not the cutoff                                          |
+| 71  | Is commission computed on the discounted price or the list price?               | 8/16     | List price. The discount is a platform marketing cost, never a Pro's pay cut                   |
+| 72  | Subscription purchase needs an `Order`, which requires a `bookingId`            | 7/16     | `paymentReference` string on the subscription; online self-checkout deferred                   |
+| 73  | The coin debit can fail after the discounted booking row is written             | 4/16     | Re-price the booking to full, never refuse it                                                  |
+| 74  | Coins returned on cancellation: keep the old expiry or grant a new window?      | 16       | New window. Nothing records which credits a redemption consumed                                |
+| 75  | A subscription checkout needs an `Order`, which required a `bookingId`          | 7/16     | `Order.bookingId` made nullable, `subscriptionId` added, CHECK enforces exactly one            |
 
 ---
 
@@ -2100,6 +2109,259 @@ reference and timestamps; they never store the code. Once an actor exists,
 normal notification rows still carry the matching foreign key. Outbox rows are
 stricter and require exactly one recipient because background delivery is only
 allowed to authenticated platform actors.
+
+---
+
+## 67 · `flatPrice` meant two different things
+
+`Booking.flatPrice` is documented as "frozen at creation from
+`Service.flatPrice`, never recomputed" (US-3.2, US-3.5), and the invoice is
+specified as "showing only the flat price the customer agreed to". Both were
+true while there were no discounts. Module 16 introduces two, and the two
+sentences stop agreeing: the price frozen from the catalogue is no longer the
+price the customer agreed to.
+
+**Decision:** `flatPrice` keeps its original meaning — the catalogue price,
+frozen, never recomputed — and a new `payableAmount` carries what the customer
+actually owes. Discounts are recorded **beside** `flatPrice` rather than folded
+into it, so "we gave this household ₹120 of coins" survives as a fact instead
+of disappearing into a smaller number.
+
+Every money path was moved to `payableAmount`: the Razorpay order, the cash a
+Pro collects, the invoice and its tax component, the reconciliation variance,
+and the cancellation refund. Two CHECK constraints enforce
+`discountAmount = walletDiscount + subscriptionDiscount` and
+`payableAmount = flatPrice − discountAmount`.
+
+**Consequence accepted:** every existing report that sums `flatPrice` as
+revenue now overstates it by the discount. `admin-analytics.service.ts` still
+reads `flatPrice` for GMV, which is arguably the right figure for _gross_
+merchandise value and arguably not — it is left alone deliberately rather than
+changed without the question being asked. See the module 16 known gaps.
+
+---
+
+## 68 · Are coins currency, and do they belong in the ledger?
+
+Module 9's ledger is append-only, hash-chained, and reconciled nightly against
+Razorpay. Homingo Coins move like money — earned, spent, expired, adjusted —
+and the obvious reading is that they are a liability and belong in the books.
+
+**Decision:** they are not currency and they do not go in the ledger.
+
+A coin is a **discount entitlement**. It is never redeemable for cash, never
+transferable, and nothing outside this platform will ever settle against it.
+Putting coins in the ledger would make every coin grant a finance event with a
+nightly verification cost, and would put entries in the hash chain that no
+external record can reconcile against — which is precisely what the chain
+exists to make impossible.
+
+What coins _do_ borrow from the ledger is its shape: an append-only log with a
+unique `sourceRef` per movement, a cached balance treated as a cache, and a
+rebuild-from-source that wins on disagreement. `WalletService.move` is a
+deliberate near-copy of `LedgerService.append`.
+
+**Consequence accepted:** the discount a coin redemption represents does not
+appear as a cost anywhere in the books. Revenue is recorded at
+`payableAmount`, so the discount shows up as revenue that was never earned
+rather than as an expense that was. For a discount entitlement that is the
+honest treatment; if coins ever become refundable, this decision has to be
+reopened.
+
+---
+
+## 69 · Six cancellation windows, decided by status alone
+
+`Modules_and_Features 1.md` defines six cancellation windows (A–F) keyed
+entirely on `Booking.status`, and `cancellationWindowFor()` implements exactly
+that. The user then asked for "cancel before 6 hours before pro arrived", which
+that model cannot express: a booking in `assigned` for a slot three days out
+and a booking in `assigned` for a slot in forty minutes are the same window.
+
+**Decision:** the status windows are kept unchanged and a **second axis** is
+added beside them. Status keeps deciding the refund mechanics, the assignment
+teardown and whether ops must be involved. Hours-to-slot decides the fee.
+
+Concretely: more than `booking.freeCancellationHours` before the slot is free
+**whatever the window, including window D** — a Pro marked en route six hours
+early has not lost the afternoon. Inside it,
+`booking.lateCancellationFeePercent` of `payableAmount` is retained, and window
+D takes whichever is greater of that and the flat window-D fee, because someone
+is standing at the door.
+
+Window E is deliberately never routed through the new axis: "partial, at ops
+discretion" is a judgement, and a formula there is what US-4.21 warns against.
+
+**Consequence accepted:** window D no longer always charges. The scope document
+implies it does; the clock says a Pro who has not left yet has lost nothing,
+and the clock is the better authority.
+
+---
+
+## 70 · Rescheduling inside the cutoff — charge or refuse?
+
+A cancellation inside the cutoff is charged. The symmetrical treatment for a
+reschedule would be to charge for it too.
+
+**Decision:** refuse it instead, and tell the customer to cancel.
+
+A reschedule is the outcome the platform actually wants from "I can't make it":
+the job survives, the customer keeps their money, the Pro keeps a filled slot.
+So it is priced to be attractive — free inside the allowance. But inside the
+cutoff, moving a job is not a smaller version of cancelling; it is the same
+disruption to the Pro's day with the platform still on the hook for a _new_
+slot. Charging a fee and then absorbing that would be worse than the
+cancellation it replaced.
+
+The new slot must also clear the cutoff, or a customer could move a job to two
+hours from now and land in exactly the state the rule prevents.
+
+Ops bypasses the **allowance** — a customer out of moves can still be helped by
+a human — but not the **cutoff**. The cutoff exists because of what a Pro's
+committed afternoon costs, and that cost does not change because an admin is
+the one clicking.
+
+**Consequence accepted:** `BookingReschedule.feeAmount` exists and is always
+zero. It is kept so a later paid-reschedule policy has somewhere to land
+without a migration.
+
+---
+
+## 71 · Commission on the discounted price or the list price?
+
+`commission-calculator.ts` takes its percentage against `Booking.flatPrice`.
+With discounts, that is no longer the amount the platform collected — the
+platform can now collect ₹350 on a ₹500 job and still owe commission on ₹500.
+
+**Decision:** commission stays on `flatPrice`.
+
+The Pro did the same work. A subscription percentage and a coin redemption are
+**marketing decisions the platform made**, and the ground rules are explicit
+that "commission is the only Pro money this system computes" — quietly making
+it smaller because marketing ran a promotion would turn a discount into a pay
+cut the Pro never agreed to and cannot see.
+
+**Consequence accepted:** the platform's margin absorbs the whole discount, and
+on a deep enough discount a booking can pay out more in commission than it took
+in. That is a pricing constraint on whoever configures the plans, not a bug —
+and it is why `subscription_plans_discount_percent_check` caps a plan at 100%
+rather than leaving it open.
+
+---
+
+## 72 · A subscription purchase has no `Order` to attach to
+
+Module 7's `Order` requires a non-null `bookingId`; it is modelled as the
+gateway side of one booking. A subscription is not a booking, so a subscription
+checkout has nowhere to record its Razorpay order.
+
+**Decision:** `CustomerSubscription` carries a bare `paymentReference` string —
+a Razorpay id, or an ops reference for a complimentary grant — and **no**
+foreign key to `Order`. Making `Order.bookingId` nullable is a module 7 schema
+change and a coordination event, and inventing a parallel `SubscriptionOrder`
+would repeat the mistake conflicts #1 and #13 record.
+
+**Consequence accepted, and it is the module's one real gap:** purchase →
+activate works today for cash, for complimentary grants and through an ops
+confirmation, but a customer cannot buy a plan online unaided. That is stated
+in the module 16 known gaps rather than hidden.
+
+---
+
+## 73 · The coin debit can fail after the booking is written
+
+Booking creation prices the job, writes the row with the discount frozen onto
+it, and then debits the wallet. The debit can fail: a customer can spend the
+same coins on another booking in the seconds between the quote and the commit.
+At that point a booking exists whose `payableAmount` is discounted and whose
+coins were never deducted.
+
+Three options: fail the booking, keep the discount and eat it, or take the
+discount back off.
+
+**Decision:** re-price the booking to its full amount and keep it. The customer
+wanted this job; losing it over a discount that was never load-bearing would be
+the wrong trade, and honouring an unpaid discount would be giving money away on
+a race. The full price is a price they were shown and can be charged. The
+subscription portion survives the reset, because it never depended on a
+balance.
+
+**Consequence accepted:** a customer can, rarely, see a booking priced higher
+than the quote they just agreed to. It is logged at `warn` with the booking
+number. The alternative — holding the wallet row lock for the length of a
+booking insert — would serialise a household's bookings behind each other on
+every request to prevent something that needs two simultaneous checkouts.
+
+---
+
+## 74 · Returned coins: old expiry or new window?
+
+Cancelling a booking returns the coins spent on it. Granting them a fresh
+expiry window makes booking-and-cancelling a way to renew an expiring balance;
+carrying the original expiry through requires knowing which credits the
+redemption consumed.
+
+**Decision:** a fresh window.
+
+Nothing records which credits a redemption consumed — the coins spent on one
+booking may have come from several credits with different dates. Reconstructing
+it would mean tracking consumption credit by credit: a FIFO lot ledger, for a
+discount entitlement.
+
+**Consequence accepted:** the renewal loop stays open. It costs the customer a
+booking they did not want and gains them nothing they did not already own,
+which makes it cheap to leave and expensive to close.
+
+---
+
+## 75 · An `Order` could only belong to a booking
+
+Decision #72 deferred online subscription checkout because `Order.bookingId`
+was `NOT NULL` and a subscription is not a booking. Closing that gap needed one
+of three things: make the column nullable, add a parallel `SubscriptionOrder`
+table, or put a fake booking behind every plan purchase.
+
+**Decision:** `Order.bookingId` is nullable, `subscriptionId` is added beside
+it, and a CHECK constraint requires **exactly one** of the two.
+
+A parallel table was the tempting option and the wrong one. It would have
+duplicated every column, both webhook paths, the refund state machine, the
+reconciliation loop and the ledger call — and every one of those would then
+have had two implementations to keep in step. That is precisely the mistake
+conflicts #1 and #13 record. A fake booking is worse again: it would pollute
+booking counts, dispatch queues, the customer's own order history and every
+analytics figure with rows representing work nobody ever did.
+
+The reframing that makes it coherent: an `Order` is **the gateway side of one
+thing the customer is buying**, and that is now either a booking or a
+subscription. The ERD only ever said "booking" because subscriptions did not
+exist when it was drawn.
+
+Two constraints carry the weight:
+
+- `orders_exactly_one_subject_check` — an order belonging to neither is money
+  with no purchase behind it; one belonging to both is a payment two things
+  would each claim. Without it, "nullable bookingId" is an invitation, and
+  every reader would need its own guard.
+- `orders_one_paid_per_subscription` — a partial unique index. A subscription
+  is bought once, so two paid orders against one would mean the customer was
+  charged twice for the same cycle. Bookings deliberately do **not** get this:
+  an expired booking order is reissued, and that history has to stay readable
+  by receipt. The index is partial on `status = 'paid'`, so unpaid reissues
+  still work for subscriptions too.
+
+**Consequences accepted, and the compiler found all of them.** Making the
+column nullable broke six call sites that assumed a booking, which is the
+outcome that argues for the change rather than against it — each one is now
+explicit about what it does with a subscription order. `RefundsService`
+narrows its own return type where the row was fetched _by_ `bookingId`, so the
+rest of that service stays guard-free; the authorized-payment path and the
+refund-settled path skip the booking write when there is none.
+
+Subscription income is also credited to a new `revenue:subscriptions` ledger
+account rather than to `revenue:bookings`. The platform's own share is computed
+as `revenue:bookings` less `expense:pro_commission`, and folding plan income
+into that would inflate the margin by money no Pro ever worked for.
 
 ---
 

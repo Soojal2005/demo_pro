@@ -20,6 +20,7 @@ import { BookingsService } from './bookings.service';
 import { AttachPhotoDto, RequestPhotoUploadDto } from './dto/lifecycle.dto';
 import { PlatformSettingsService } from './platform-settings.service';
 import { COMMISSION_PORT, type CommissionPort } from './ports/commission.port';
+import { LOYALTY_PORT, type LoyaltyPort } from './ports/loyalty.port';
 
 /**
  * Everything that happens between assignment and completion.
@@ -62,6 +63,7 @@ export class BookingLifecycleService {
     private readonly settings: PlatformSettingsService,
     private readonly config: ConfigService,
     @Inject(COMMISSION_PORT) private readonly commission: CommissionPort,
+    @Inject(LOYALTY_PORT) private readonly loyalty: LoyaltyPort,
     @Optional() private readonly notifications?: NotificationsService,
   ) {}
 
@@ -472,7 +474,7 @@ export class BookingLifecycleService {
         // Reporting only. Commission is one flat rate per service — a
         // four-hour job pays exactly what a one-hour one does.
         actualDurationMinutes,
-        ...(await this.buildInvoice(booking.flatPrice.toString())),
+        ...(await this.buildInvoice(booking.payableAmount.toString())),
       },
     });
 
@@ -508,6 +510,22 @@ export class BookingLifecycleService {
       );
     }
 
+    // Module 16 — the customer's side of the same moment. Coins earned on this
+    // job, and the referral it may qualify.
+    //
+    // Non-fatal, and the weakest of the three: a missing coin credit is
+    // neither derived data nor money owed to an employee, and it is fully
+    // recomputable from the completed booking. The port's contract requires
+    // idempotency, so ops re-running it costs nothing.
+    try {
+      await this.loyalty.onBookingCompleted(bookingId);
+    } catch (error) {
+      this.logger.error(
+        `Booking ${bookingId} completed, but no Homingo Coins were credited to the customer.`,
+        error instanceof Error ? error.stack : String(error),
+      );
+    }
+
     return completed;
   }
 
@@ -517,16 +535,20 @@ export class BookingLifecycleService {
    * renders one yet, so `invoicePdfUrl` stays null rather than pointing at
    * something that does not exist.
    */
-  private async buildInvoice(flatPrice: string): Promise<{
+  private async buildInvoice(payableAmount: string): Promise<{
     invoiceNumber: string;
     taxAmount: string;
     invoicedAt: Date;
   }> {
     const taxPercent = await this.settings.getNumber('booking.taxPercent', 18);
-    const gross = Number(flatPrice);
-    // The flat price is what the customer agreed to and is tax-inclusive —
+    const gross = Number(payableAmount);
+    // The payable amount is what the customer agreed to and is tax-inclusive —
     // US-3.2 and US-3.2b both require the invoice to show only that number.
     // What is recorded here is the tax component *within* it, not an addition.
+    //
+    // Since module 16 that number is the flat price **less any discount**: an
+    // invoice for a job a customer part-paid in coins must show what they were
+    // actually billed, or it is not an invoice.
     const taxAmount = (gross - gross / (1 + taxPercent / 100)).toFixed(2);
 
     const rows = await this.prisma.$queryRaw<{ nextval: bigint }[]>`

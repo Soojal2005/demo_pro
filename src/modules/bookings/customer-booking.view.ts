@@ -60,11 +60,23 @@ type Money = { toString(): string } | null | undefined;
  *
  * Rupee amounts are far inside the range a double represents exactly, so this
  * is safe for what it is used for — a figure on a card. Nothing that settles
- * money should come through here; that reads `flatPrice` off `BookingDto`,
- * which stays a string on purpose.
+ * money should come through here; that reads the decimal strings off
+ * `BookingDto`, which stay strings on purpose.
  */
 const money = (value: Money): number | null =>
   value === null || value === undefined ? null : Number(value.toString());
+
+/**
+ * Whether this booking was discounted at all.
+ *
+ * Read from `discountAmount` rather than by comparing the two prices, because
+ * they are `Decimal`s and `'500.00' !== '500'` while both mean the same thing.
+ * The column is the answer; the comparison is a way to get it wrong.
+ */
+const hasDiscount = (row: { discountAmount: Money }): boolean =>
+  row.discountAmount !== null &&
+  row.discountAmount !== undefined &&
+  Number(row.discountAmount.toString()) > 0;
 
 const iso = (value: Date | null | undefined): string | null =>
   value ? value.toISOString() : null;
@@ -83,7 +95,12 @@ export interface CustomerBookingRow {
   serviceId: string;
   bookingType: string;
   paymentStatus: string;
+  /** The catalogue price, frozen at creation. The "before" figure. */
   flatPrice: { toString(): string };
+  /** What the customer is actually charged, after plan and coin discounts. */
+  payableAmount: { toString(): string };
+  discountAmount: Money;
+  coinsRedeemed: number | null;
   slotStartAt: Date | null;
   slotEndAt: Date | null;
   createdAt: Date;
@@ -133,7 +150,20 @@ export function toCustomerBooking(row: CustomerBookingRow): CustomerBookingDto {
       row.service?.durationMinutes ??
       minutesBetween(row.slotStartAt, row.slotEndAt),
     address: row.address?.addressLine ?? '',
-    price: money(row.flatPrice) ?? 0,
+    /*
+     * `price` is **what the customer pays**, not the catalogue price.
+     *
+     * These were the same number until discounts existed. They are not any
+     * more: a booking with a plan discount or a coin redemption is charged
+     * `payableAmount`, and showing `flatPrice` on the card would quote a
+     * household a figure nobody ever took from them. `listPrice` below is the
+     * struck-through "before" figure, and it is null when there was no
+     * discount so a client cannot render a meaningless one.
+     */
+    price: money(row.payableAmount) ?? 0,
+    listPrice: hasDiscount(row) ? (money(row.flatPrice) ?? 0) : null,
+    discountAmount: hasDiscount(row) ? (money(row.discountAmount) ?? 0) : null,
+    coinsRedeemed: row.coinsRedeemed ?? 0,
     paymentStatus: row.paymentStatus,
     bookingType: row.bookingType,
     slotStartAt: iso(row.slotStartAt),

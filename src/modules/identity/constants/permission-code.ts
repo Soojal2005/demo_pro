@@ -165,6 +165,42 @@ export const PermissionCode = {
    * cannot work it is parked rather than owned.
    */
   SUPPORT_TICKET_MANAGE: 'support.ticket.manage',
+
+  // --- Module 16 · Loyalty --------------------------------------------
+  //
+  // Four grants where two would have done, and the split is between *reading*
+  // a customer's loyalty position and *giving something away*. The three
+  // write grants are separated from each other for the same reason the payout
+  // grants are: they hand out different things, and nobody needs all three.
+
+  /** Wallet balances, coin statements, subscription and referral lists. */
+  LOYALTY_READ: 'loyalty.read',
+  /**
+   * Crediting or debiting a customer's coins by hand.
+   *
+   * Its own grant because it is the only way anywhere in this API to create
+   * coins from nothing. Every adjustment carries the admin's id — the database
+   * refuses one that does not — so this grant is also the answer to "who gave
+   * this household 5,000 coins".
+   */
+  LOYALTY_WALLET_ADJUST: 'loyalty.wallet.adjust',
+  /**
+   * The subscription catalogue: creating plans, repricing them, retiring them.
+   * A pricing decision, so it does not ride along with `catalog.manage` — the
+   * ground rule that separated `CATALOG_COMMISSION_SET` applies here too.
+   */
+  SUBSCRIPTION_PLAN_MANAGE: 'loyalty.subscriptionPlan.manage',
+  /**
+   * Activating, granting and cancelling one customer's subscription. Kept
+   * apart from the catalogue grant because granting a free plan to a friend
+   * and repricing the product line are not the same authority.
+   */
+  SUBSCRIPTION_MANAGE: 'loyalty.subscription.manage',
+  /**
+   * Blocking a referral code and rejecting a referral — the abuse brake.
+   * Support needs it; whoever prices the plans does not.
+   */
+  REFERRAL_MODERATE: 'loyalty.referral.moderate',
 } as const;
 
 export type PermissionCode =

@@ -83,16 +83,33 @@ export class AdminAnalyticsService {
     const rows = await this.bookings(query, allowedCityIds);
     const completed = rows.filter((row) => row.status === 'completed');
     const cancelled = rows.filter((row) => row.status === 'cancelled');
+    /*
+     * GMV is deliberately **gross** — the catalogue value of what was sold,
+     * before discounts. That is what the acronym means, and it keeps the
+     * figure comparable with every month reported before discounts existed.
+     *
+     * `netPlatformRevenue` below is deliberately **not** on the same basis.
+     * It starts from `payableAmount`, because a plan discount or a coin
+     * redemption is money that never arrived, and subtracting commission from
+     * a figure the platform never received overstates the margin on every
+     * discounted booking. The two numbers are meant to differ, and
+     * `discountGiven` is the bridge between them so the gap is a reported
+     * figure rather than a discrepancy somebody has to chase.
+     */
     const gmv = completed.reduce((sum, row) => sum + Number(row.flatPrice), 0);
+    const discountGiven = completed.reduce(
+      (sum, row) => sum + Number(row.discountAmount ?? 0),
+      0,
+    );
     // Marketing may compare this with GMV, but it must not mistake the
-    // catalogue split for money retained. Refunds and incentives reduce the
-    // platform's share; a missing commission row contributes nothing rather
-    // than overstating revenue from unpaid work.
+    // catalogue split for money retained. Discounts, refunds and incentives all
+    // reduce the platform's share; a missing commission row contributes nothing
+    // rather than overstating revenue from unpaid work.
     const platformRevenue = completed.reduce(
       (sum, row) =>
         sum +
         (row.commission
-          ? Number(row.flatPrice) -
+          ? Number(row.payableAmount) -
             Number(row.refundedAmount ?? 0) -
             Number(row.commission.commissionAmount) -
             Number(row.commission.incentiveAmount)
@@ -112,6 +129,10 @@ export class AdminAnalyticsService {
       money: {
         currency: 'INR',
         gmv: gmv.toFixed(2),
+        /** Plan discounts and coin redemptions — the gap between the two. */
+        discountGiven: discountGiven.toFixed(2),
+        /** Gross takings after discount, i.e. what was actually charged. */
+        netRevenue: (gmv - discountGiven).toFixed(2),
         netPlatformRevenue: platformRevenue.toFixed(2),
       },
       dispatch: {
@@ -150,15 +171,20 @@ export class AdminAnalyticsService {
         noSupply: cityRows.filter(
           (row) => row.assignmentOutcome === 'no_supply',
         ).length,
+        // Same bases as `overview` above, and for the same reasons: GMV gross,
+        // platform revenue from what was actually charged.
         gmv: completed
           .reduce((sum, row) => sum + Number(row.flatPrice), 0)
+          .toFixed(2),
+        discountGiven: completed
+          .reduce((sum, row) => sum + Number(row.discountAmount ?? 0), 0)
           .toFixed(2),
         netPlatformRevenue: completed
           .reduce(
             (sum, row) =>
               sum +
               (row.commission
-                ? Number(row.flatPrice) -
+                ? Number(row.payableAmount) -
                   Number(row.refundedAmount ?? 0) -
                   Number(row.commission.commissionAmount) -
                   Number(row.commission.incentiveAmount)
@@ -253,7 +279,14 @@ export class AdminAnalyticsService {
           service: row.service.name,
           proId: row.proId,
           pro: row.pro?.fullName,
+          // Deliberately the LIST price, not what the customer paid: commission
+          // is computed against `flatPrice` because the Pro did the same work
+          // whether or not marketing discounted the job (decision #71). The
+          // column sits beside `proAmount`, so it must be the base that figure
+          // was actually derived from. `chargedAmount` is alongside it so the
+          // platform's real take is not left to be inferred.
           grossPrice: row.flatPrice.toString(),
+          chargedAmount: row.payableAmount.toString(),
           commissionType: row.commission!.commissionType,
           commissionValue: row.commission!.commissionValue.toString(),
           proAmount: row.commission!.commissionAmount.toString(),
@@ -275,7 +308,13 @@ export class AdminAnalyticsService {
       completedAt: row.completedAt,
       cancelledAt: row.cancelledAt,
       paymentMode: row.paymentMode,
-      amount: row.flatPrice.toString(),
+      // Three columns where there was one. `amount` keeps its name and its
+      // place in the export, but now carries what was actually charged —
+      // a column labelled only "amount" that held the pre-discount price is
+      // the kind of thing a finance sheet silently sums into the wrong total.
+      listPrice: row.flatPrice.toString(),
+      discountAmount: row.discountAmount.toString(),
+      amount: row.payableAmount.toString(),
     }));
   }
 

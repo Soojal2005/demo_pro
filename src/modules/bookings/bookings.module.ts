@@ -7,6 +7,7 @@ import { IdentityModule } from '../identity/identity.module';
 import { ProsModule } from '../pros/pros.module';
 import { AdminBookingsController } from './admin-bookings.controller';
 import { BookingCancellationService } from './booking-cancellation.service';
+import { BookingRescheduleService } from './booking-reschedule.service';
 import { BookingEtaService } from './booking-eta.service';
 import { BookingChatService } from './booking-chat.service';
 import { BookingLifecycleService } from './booking-lifecycle.service';
@@ -23,6 +24,7 @@ import {
   NoOpCommissionService,
 } from './ports/commission.port';
 import { DISPATCH_PORT, NoOpDispatchService } from './ports/dispatch.port';
+import { LOYALTY_PORT, NoOpLoyaltyService } from './ports/loyalty.port';
 import { NoOpPaymentsService, PAYMENTS_PORT } from './ports/payments.port';
 import {
   NoOpServiceabilityService,
@@ -46,6 +48,10 @@ import { RecurringPlansService } from './recurring-plans.service';
  *   lifecycle runs end to end today.
  * - {@link COMMISSION_PORT} → module 8. Bound to a no-op that logs. A job still
  *   completes without it; nobody gets paid for it, which the log says out loud.
+ * - {@link LOYALTY_PORT} → module 16. Bound to a no-op that prices every
+ *   booking at its flat price and earns nothing. The one port whose absence is
+ *   *invisible* to the customer rather than merely survivable: they pay the
+ *   advertised amount, which is never wrong, only ungenerous.
  *
  * Swapping in the real modules later means changing these two `provide`
  * lines and nothing else.
@@ -72,6 +78,7 @@ import { RecurringPlansService } from './recurring-plans.service';
     BookingEtaService,
     BookingLifecycleService,
     BookingCancellationService,
+    BookingRescheduleService,
     BookingChatService,
     BookingTrackingService,
     TrackingGateway,
@@ -82,6 +89,7 @@ import { RecurringPlansService } from './recurring-plans.service';
     { provide: PAYMENTS_PORT, useClass: NoOpPaymentsService },
     { provide: SERVICEABILITY_PORT, useClass: NoOpServiceabilityService },
     { provide: COMMISSION_PORT, useClass: NoOpCommissionService },
+    { provide: LOYALTY_PORT, useClass: NoOpLoyaltyService },
   ],
   // PlatformSettingsService and the two ports are exported so modules 5 and 7
   // can read tunables and register their real implementations into the
@@ -96,6 +104,7 @@ import { RecurringPlansService } from './recurring-plans.service';
     PAYMENTS_PORT,
     SERVICEABILITY_PORT,
     COMMISSION_PORT,
+    LOYALTY_PORT,
   ],
 })
 export class BookingsModule {}

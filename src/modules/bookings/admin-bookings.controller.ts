@@ -21,10 +21,12 @@ import { RequirePermissions } from '../identity/decorators/require-permissions.d
 import { JwtAuthGuard } from '../identity/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../identity/guards/permissions.guard';
 import { BookingCancellationService } from './booking-cancellation.service';
+import { BookingRescheduleService } from './booking-reschedule.service';
 import { BookingLifecycleService } from './booking-lifecycle.service';
 import { BookingsService } from './bookings.service';
 import { AdminBookingQueryDto } from './dto/admin-booking-query.dto';
 import { AdminCancelBookingDto } from './dto/cancel-booking.dto';
+import { AdminRescheduleBookingDto } from './dto/reschedule-booking.dto';
 import { BookingDto } from './dto/booking.dto';
 import { AssignProDto, ForceStartDto } from './dto/lifecycle.dto';
 import { RecurringPlansService } from './recurring-plans.service';
@@ -38,6 +40,7 @@ export class AdminBookingsController {
     private readonly bookings: BookingsService,
     private readonly lifecycle: BookingLifecycleService,
     private readonly cancellation: BookingCancellationService,
+    private readonly reschedule_: BookingRescheduleService,
     private readonly plans: RecurringPlansService,
   ) {}
 
@@ -84,9 +87,13 @@ export class AdminBookingsController {
   @Get(':id/cancellation-window')
   @RequirePermissions(PermissionCode.BOOKING_READ)
   @ApiOperation({
-    summary: 'Which cancellation window this booking is in',
+    summary: 'What cancelling this booking would do',
     description:
-      'A–F, plus whether a fee applies and whether the decision needs a human.',
+      'The status window A–F, **and** the timing: how many hours until the ' +
+      'slot, which side of `freeCancellationHours` that falls on, the fee and ' +
+      'refund that would result, and the coins that would go back. The same ' +
+      'answer the customer sees on their own confirm screen, so support and ' +
+      'the customer are reading one number.',
   })
   @ApiOkEnvelope()
   @ApiErrorEnvelope(
@@ -96,6 +103,56 @@ export class AdminBookingsController {
   )
   window(@Param('id') id: string) {
     return this.cancellation.describeWindow(id);
+  }
+
+  @Get(':id/reschedules')
+  @RequirePermissions(PermissionCode.BOOKING_READ)
+  @ApiOperation({
+    summary: 'Every time this booking has been moved',
+    description:
+      'Append-only, oldest first — who moved it, from when to when, and how ' +
+      'many hours of notice the Pro got.',
+  })
+  @ApiOkEnvelope()
+  @ApiErrorEnvelope(
+    HttpStatus.UNAUTHORIZED,
+    HttpStatus.FORBIDDEN,
+    HttpStatus.NOT_FOUND,
+  )
+  reschedules(@Param('id') id: string) {
+    return this.reschedule_.listFor(id);
+  }
+
+  @Post(':id/reschedule')
+  @RequirePermissions(PermissionCode.BOOKING_CANCEL)
+  @ApiOperation({
+    summary: "Move a booking on the customer's behalf",
+    description:
+      'Ops **bypasses the allowance** — a customer who has used their two ' +
+      'moves can still be helped by a human — but not the cutoff. The cutoff ' +
+      "exists because of what a Pro's committed afternoon costs, and that " +
+      'cost does not change because an admin is the one clicking; moving a job ' +
+      'inside the window is the reassignment path, not this one.',
+  })
+  @ApiOkEnvelope()
+  @ApiErrorEnvelope(
+    HttpStatus.BAD_REQUEST,
+    HttpStatus.UNAUTHORIZED,
+    HttpStatus.FORBIDDEN,
+    HttpStatus.NOT_FOUND,
+    HttpStatus.CONFLICT,
+  )
+  rescheduleAsOps(
+    @Param('id') id: string,
+    @Body() dto: AdminRescheduleBookingDto,
+    @CurrentUser() actor: AuthenticatedUser,
+  ): Promise<Booking> {
+    return this.reschedule_.rescheduleAsOps(
+      actor.id,
+      id,
+      dto.slotStartAt,
+      dto.reason,
+    );
   }
 
   @Post(':id/assign')

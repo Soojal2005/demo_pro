@@ -171,10 +171,98 @@ async function main(): Promise<void> {
 
   await seedCatalog({ seedAreas: true });
   await seedSupportTemplates();
+  await seedSubscriptionPlans();
 
   console.log(
     `Seeded four system roles and admin user (${SEED_ADMIN_PHONE}, ${SEED_ADMIN_EMAIL}).`,
   );
+}
+
+/**
+ * Module 16's subscription plans.
+ *
+ * Three tiers, seeded rather than left to ops, because
+ * `GET /customers/me/subscriptions/plans` returning an empty array is
+ * indistinguishable from the feature being broken — and the app has a
+ * subscription screen either way.
+ *
+ * Upserted by `code`, so re-seeding does not duplicate a plan and does not
+ * overwrite whatever marketing has since done to the prices. **Live
+ * subscriptions are untouched regardless**: every perk is copied onto
+ * `CustomerSubscription` at purchase, so editing a plan here changes what new
+ * buyers get and nothing else.
+ *
+ * The numbers are a starting point, not a pricing decision. Every one of them
+ * is editable at `PATCH /admin/loyalty/plans/:id`.
+ */
+async function seedSubscriptionPlans(): Promise<void> {
+  const plans = [
+    {
+      code: 'homingo_silver',
+      name: 'Homingo Silver',
+      description:
+        '5% off every booking and 1.5x Homingo Coins. A quarter of a year.',
+      tier: 'silver',
+      sortOrder: 1,
+      priceAmount: '299.00',
+      durationDays: 90,
+      discountPercent: '5.00',
+      maxDiscountAmount: '150.00',
+      coinEarnMultiplier: '1.50',
+      bonusCoins: 150,
+      // The fee waiver is what people upgrade for, so it starts at gold.
+      waivesCancellationFee: false,
+      extraReschedules: 1,
+      includedBookings: null,
+    },
+    {
+      code: 'homingo_gold',
+      name: 'Homingo Gold',
+      description:
+        '10% off every booking, double coins, free cancellations and two extra reschedules.',
+      tier: 'gold',
+      sortOrder: 2,
+      priceAmount: '699.00',
+      durationDays: 180,
+      discountPercent: '10.00',
+      maxDiscountAmount: '250.00',
+      coinEarnMultiplier: '2.00',
+      bonusCoins: 400,
+      waivesCancellationFee: true,
+      extraReschedules: 2,
+      includedBookings: null,
+    },
+    {
+      code: 'homingo_platinum',
+      name: 'Homingo Platinum',
+      description:
+        '15% off every booking, triple coins, free cancellations, and priority when a Pro is assigned.',
+      tier: 'platinum',
+      sortOrder: 3,
+      priceAmount: '1499.00',
+      durationDays: 365,
+      discountPercent: '15.00',
+      maxDiscountAmount: '500.00',
+      coinEarnMultiplier: '3.00',
+      bonusCoins: 1000,
+      waivesCancellationFee: true,
+      extraReschedules: 4,
+      // Nothing reads priorityDispatch yet — see the module 16 known gaps.
+      priorityDispatch: true,
+      includedBookings: null,
+    },
+  ];
+
+  for (const plan of plans) {
+    await prisma.subscriptionPlan.upsert({
+      where: { code: plan.code },
+      // Deliberately empty: re-seeding must not undo a repricing.
+      update: {},
+      create: plan,
+    });
+  }
+
+  console.log(`Seeded ${plans.length} subscription plans.`);
 }
 
 /**
