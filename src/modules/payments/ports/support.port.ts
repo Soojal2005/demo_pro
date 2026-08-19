@@ -21,7 +21,7 @@ export interface SupportPort {
 }
 
 /**
- * Stand-in until module 11 lands.
+ * Stand-in until module 11 lands, and the delegate it registers into.
  *
  * Quiet, for the same reason as the ledger stub: feature 17 is explicit that
  * an unpaid job still **completes** and the Pro is still **paid their
@@ -36,7 +36,27 @@ export interface SupportPort {
 export class NoOpSupportService implements SupportPort {
   private readonly logger = new Logger(NoOpSupportService.name);
 
+  /**
+   * The real ticket system, registered at boot by module 11 if it is present.
+   *
+   * The same indirection `NoOpCommissionService` and `NoOpLedgerService` use,
+   * for the same reason: Nest resolves providers per module, so re-binding
+   * `SUPPORT_PORT` inside `SupportModule` would never reach
+   * `CashCollectionService` here in Payments.
+   */
+  private real: SupportPort | null = null;
+
+  register(implementation: SupportPort): void {
+    this.real = implementation;
+    this.logger.log(
+      'Support ticketing registered — an unpaid cash job now raises a real ' +
+        'billing ticket instead of a log line.',
+    );
+  }
+
   raiseBillingTicket(ticket: BillingTicket): Promise<void> {
+    if (this.real) return this.real.raiseBillingTicket(ticket);
+
     this.logger.warn(
       `Billing ticket not raised — module 11 is not built: booking ${ticket.bookingId} ` +
         `completed with ${ticket.amount} uncollected from customer ${ticket.customerId} ` +

@@ -1,7 +1,9 @@
-import { HttpStatus, Injectable } from '@nestjs/common';
+import { HttpStatus, Injectable, Optional } from '@nestjs/common';
 import { apiError } from '../../common/utils';
 import type { Booking, Prisma } from '../../prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import type { NotificationIntent } from '../notifications/notification.types';
 import type {
   ActorType,
   BookingStatus,
@@ -23,6 +25,8 @@ export interface TransitionInput {
    * Prevents a retried request from replaying a transition that already ran.
    */
   expectedFrom?: BookingStatus[];
+  /** Extra intents whose durability must match this state transition. */
+  notificationIntents?: NotificationIntent[];
 }
 
 /**
@@ -42,7 +46,10 @@ export interface TransitionInput {
  */
 @Injectable()
 export class BookingStateService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional() private readonly notifications?: NotificationsService,
+  ) {}
 
   async transition(input: TransitionInput): Promise<Booking> {
     const {
@@ -53,6 +60,7 @@ export class BookingStateService {
       coordinates,
       data = {},
       expectedFrom,
+      notificationIntents = [],
     } = input;
 
     return this.prisma.$transaction(async (tx) => {
@@ -98,7 +106,7 @@ export class BookingStateService {
         data: { ...data, status: to },
       });
 
-      await tx.bookingStatusEvent.create({
+      const statusEvent = await tx.bookingStatusEvent.create({
         data: {
           bookingId,
           status: to,
@@ -109,8 +117,68 @@ export class BookingStateService {
         },
       });
 
+      if (this.notifications) {
+        const automatic = await this.automaticIntents(
+          tx,
+          updated,
+          to,
+          statusEvent.id,
+        );
+        for (const intent of [...notificationIntents, ...automatic])
+          await this.notifications.enqueue(intent, tx);
+      }
+
       return updated;
     });
+  }
+
+  private async automaticIntents(
+    tx: Prisma.TransactionClient,
+    booking: Booking,
+    status: BookingStatus,
+    eventId: string,
+  ): Promise<NotificationIntent[]> {
+    const templateByStatus: Partial<Record<BookingStatus, string>> = {
+      en_route: 'booking.pro_en_route',
+      arrived: 'booking.pro_arrived',
+      started: 'booking.started',
+      completed: 'booking.completed',
+      cancelled: 'booking.cancelled',
+    };
+    const templateKey = templateByStatus[status];
+    if (!templateKey) return [];
+    const pro = booking.proId
+      ? await tx.pro.findUnique({
+          where: { id: booking.proId },
+          select: { fullName: true },
+        })
+      : null;
+    const variables = {
+      bookingNumber: booking.bookingNumber,
+      proName: pro?.fullName ?? 'Your Homingo Pro',
+    };
+    const intents: NotificationIntent[] = [
+      {
+        eventKey: `booking.${status}`,
+        dedupeKey: `booking:${booking.id}:event:${eventId}:customer`,
+        templateKey,
+        recipientType: 'customer',
+        recipientId: booking.customerId,
+        bookingId: booking.id,
+        variables,
+      },
+    ];
+    if (booking.proId && ['completed', 'cancelled'].includes(status))
+      intents.push({
+        eventKey: `booking.${status}`,
+        dedupeKey: `booking:${booking.id}:event:${eventId}:pro`,
+        templateKey,
+        recipientType: 'pro',
+        recipientId: booking.proId,
+        bookingId: booking.id,
+        variables,
+      });
+    return intents;
   }
 
   /**

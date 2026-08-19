@@ -4,6 +4,7 @@ import {
   HttpStatus,
   Inject,
   Injectable,
+  Logger,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -17,6 +18,10 @@ import { RequestOtpDto } from '../dto/request-otp.dto';
 import { UpdateProfileDto } from '../dto/update-profile.dto';
 import { VerifyOtpDto } from '../dto/verify-otp.dto';
 import { OTP_PROVIDER, type OtpProvider } from '../otp/otp-provider.interface';
+import {
+  maskPhone,
+  recipientForeignKey,
+} from '../../notifications/notification.types';
 import { TokenPair, TokenService } from './token.service';
 
 /**
@@ -70,6 +75,7 @@ const blankToNull = (value: string): string | null => value.trim() || null;
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
   constructor(
     @Inject(OTP_PROVIDER) private readonly otpProvider: OtpProvider,
     private readonly tokenService: TokenService,
@@ -97,6 +103,7 @@ export class AuthService {
       result.providerRef,
       this.numberConfig('OTP_TTL_SECONDS', 300),
     );
+    await this.recordOtpRequest(dto, result.providerRef);
     return result;
   }
 
@@ -135,6 +142,14 @@ export class AuthService {
     }
 
     const { actor, account, isNewUser } = await this.resolveActor(dto);
+
+    // Module 12 needs somewhere to send to, and the moment a device proves it
+    // owns the phone is the moment its token is worth trusting. Taken from
+    // `soojal-1`, rebased onto this method's shape: that branch read a single
+    // `user` back from `resolveActor`, which now returns the actor alongside
+    // the account row and whether it was just created.
+    if (dto.pushToken && dto.pushPlatform)
+      await this.storePushToken(actor, dto.pushToken, dto.pushPlatform);
     await this.redis.del(
       `otp:active:${dto.phone}`,
       `otp:failed:${dto.phone}`,
@@ -142,6 +157,71 @@ export class AuthService {
     );
     const tokens = await this.tokenService.issueTokenPair(actor);
     return { ...tokens, isNewUser, user: account };
+  }
+
+  private async recordOtpRequest(
+    dto: RequestOtpDto,
+    providerRef: string,
+  ): Promise<void> {
+    try {
+      const recipient =
+        dto.actorType === 'customer'
+          ? await this.prisma.customer.findUnique({
+              where: { phone: dto.phone },
+            })
+          : dto.actorType === 'pro'
+            ? await this.prisma.pro.findUnique({ where: { phone: dto.phone } })
+            : await this.prisma.adminUser.findUnique({
+                where: { phone: dto.phone },
+              });
+      await this.prisma.notificationLog.create({
+        data: {
+          dedupeKey: `otp:${providerRef}`,
+          recipientType: dto.actorType,
+          ...(recipient
+            ? recipientForeignKey(dto.actorType, recipient.id)
+            : {}),
+          recipientMasked: maskPhone(dto.phone),
+          channel:
+            this.config.get<string>('SLIDE_DEFAULT_CHANNEL', 'whatsapp') ===
+            'sms'
+              ? 'sms'
+              : 'whatsapp',
+          provider: 'slide',
+          templateKey: 'auth.otp',
+          payloadJson: { kind: 'otp', secretStored: false },
+          status: 'accepted',
+          providerReference: providerRef,
+          sentAt: new Date(),
+        },
+      });
+    } catch (error) {
+      this.logger.error(
+        `OTP ${providerRef} was sent but its notification log could not be written: ${error instanceof Error ? error.message : 'unknown error'}`,
+      );
+    }
+  }
+
+  /**
+   * Where module 12 pushes to, recorded at the one moment a device has just
+   * proved it owns this number.
+   *
+   * Customer and Pro only. `soojal-1` carried an admin arm here as well, from
+   * back when admins signed in by OTP; they sign in through Firebase now and
+   * `resolveActor` has no admin branch left to return one, so that arm could
+   * only ever have been dead.
+   */
+  private async storePushToken(
+    user: AuthenticatedUser,
+    pushToken: string,
+    pushPlatform: 'android' | 'ios',
+  ): Promise<void> {
+    const data = { pushToken, pushPlatform, pushTokenUpdatedAt: new Date() };
+    if (user.actorType === 'customer') {
+      await this.prisma.customer.update({ where: { id: user.id }, data });
+    } else if (user.actorType === 'pro') {
+      await this.prisma.pro.update({ where: { id: user.id }, data });
+    }
   }
 
   async createGuestSession(dto: GuestSessionDto): Promise<TokenPair> {
@@ -307,6 +387,7 @@ export class AuthService {
   // `admin` never reaches here: `VerifyOtpDto` rejects it at validation, so
   // the console has exactly one way in and this method has two actors to
   // consider rather than a third that quietly bypassed Firebase.
+
   private async resolveActor(dto: VerifyOtpDto): Promise<ResolvedActor> {
     if (dto.actorType === 'customer') return this.resolveCustomer(dto);
     return this.resolvePro(dto.phone);

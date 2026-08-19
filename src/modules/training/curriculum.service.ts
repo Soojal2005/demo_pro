@@ -1,7 +1,13 @@
-import { HttpStatus, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  HttpStatus,
+  Injectable,
+  NotFoundException,
+  Optional,
+} from '@nestjs/common';
 import type { ProTrainingProgress, TrainingModule } from '../../prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { S3Service } from '../../storage/s3.service';
+import { CloudFrontService } from '../../cdn/cloudfront.service';
 import { apiError } from '../../common/utils';
 import { PlatformSettingsService } from '../bookings/platform-settings.service';
 import { gradeQuiz, questionIdsFrom, readAnswerKey } from './quiz-grading';
@@ -49,6 +55,7 @@ export class CurriculumService {
     private readonly prisma: PrismaService,
     private readonly s3: S3Service,
     private readonly settings: PlatformSettingsService,
+    @Optional() private readonly cloudFront?: CloudFrontService,
   ) {}
 
   // ------------------------------------------------------------------
@@ -499,6 +506,11 @@ export class CurriculumService {
 
   private async contentUrlFor(module: TrainingModule): Promise<string> {
     if (module.contentUrl) return module.contentUrl;
+    if (this.cloudFront?.signingConfigured)
+      return this.cloudFront.signedUrlFor(
+        module.contentKey!,
+        CONTENT_URL_TTL_SECONDS,
+      );
     const { viewUrl } = await this.s3.createViewUrl(
       module.contentKey!,
       CONTENT_URL_TTL_SECONDS,

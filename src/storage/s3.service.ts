@@ -112,4 +112,22 @@ export class S3Service {
       }),
     );
   }
+
+  /** Writes an object intended to be read only through CloudFront OAC. */
+  async putCdnObject(
+    key: string,
+    body: Buffer,
+    contentType: string,
+    cacheControl: string,
+  ): Promise<void> {
+    await this.client.send(
+      new PutObjectCommand({
+        Bucket: this.bucket,
+        Key: key,
+        Body: body,
+        ContentType: contentType,
+        CacheControl: cacheControl,
+      }),
+    );
+  }
 }

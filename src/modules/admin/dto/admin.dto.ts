@@ -15,6 +15,7 @@ import {
   Max,
   MaxLength,
   Min,
+  MinLength,
   ValidateIf,
 } from 'class-validator';
 
@@ -151,6 +152,30 @@ export class UpsertPlatformSettingDto {
   @IsOptional()
   @IsUUID('4')
   cityId?: string;
+  @ApiProperty({ minLength: 10, maxLength: 500 })
+  @IsString()
+  @MinLength(10)
+  @MaxLength(500)
+  reason!: string;
+  @ApiPropertyOptional({
+    description:
+      'Required as true for dispatch.ratingPriorMean and dispatch.ratingPriorWeight.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  confirmImpact?: boolean;
+}
+
+export class ResetPlatformSettingDto {
+  @ApiProperty({ minLength: 10, maxLength: 500 })
+  @IsString()
+  @MinLength(10)
+  @MaxLength(500)
+  reason!: string;
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  confirmImpact?: boolean;
 }
 
 export class ReassignBookingDto {

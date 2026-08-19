@@ -1,0 +1,69 @@
+# Everything here is excluded from the build context. Two reasons it matters
+# beyond image size: a smaller context uploads faster on every build, and
+# anything copied into a layer is recoverable from the published image even if
+# a later layer deletes it — so secrets must never enter the context at all.
+
+# Dependencies — reinstalled from the lockfile inside the image
+node_modules
+
+# Build output — rebuilt inside the image
+dist
+coverage
+generated
+
+# Git
+.git
+.gitignore
+.github
+
+# Environment and secrets. `.env.*` covers .env.local / .env.production /
+# .env.<anything>; the bare `.env` needs its own line because the glob does
+# not match it. `.env.example` is deliberately allowed back in — it is
+# committed, contains no real values, and is useful documentation in-image.
+.env
+.env.*
+!.env.example
+
+# Tests and their fixtures. `nest build` uses tsconfig.build.json, which
+# excludes `test` and `**/*spec.ts`, so none of this is needed to compile.
+test
+**/*.spec.ts
+**/*.e2e-spec.ts
+jest.config.*
+
+# Local tooling that has no business in a production image
+.husky
+.vscode
+.idea
+postman
+scripts
+docs
+README.md
+*.md
+
+# Local runtime scratch directories created by the manual test harnesses
+.auth-postman-runtime
+.aws-api-test-runtime
+.curl-test-runtime
+.live-auth-postman-runtime
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# OS noise
+.DS_Store
+Thumbs.db
+
+# Docker's own files
+Dockerfile
+.dockerignore
+docker-compose*.yml
+
+# Editor / MCP config
+.mcp.json
+.prettierrc
+.prettierignore
+eslint.config.mjs

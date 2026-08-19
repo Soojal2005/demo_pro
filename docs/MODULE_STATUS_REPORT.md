@@ -1,6 +1,6 @@
 # Module Status Report
 
-**Date:** 2026-08-10
+**Date:** 2026-08-14
 **Branch:** `homingo-backend-m1`
 **Scope:** every module in [`Modules_and_Features 1.md`](Modules_and_Features%201.md), with modules 1, 2, 3, 4 and 6 audited feature-by-feature, gaps closed where they didn't depend on an unbuilt module, and verified by unit tests, e2e tests, a live boot and a full cURL pass.
 
@@ -16,23 +16,23 @@
 
 ## Status at a glance
 
-| #   | Module                    | Owns                                              | Status                                                                       |
-| --- | ------------------------- | ------------------------------------------------- | ---------------------------------------------------------------------------- |
-| 1   | Identity & Access         | Role, AdminUser                                   | ✅ **Built** — 10/10 features                                                |
-| 2   | Customer Profile          | Customer, CustomerAddress                         | ✅ **Built** — 8/9 features; 1 out of scope per ERD                          |
-| 3   | Service Catalog           | ServiceCategory, Service, City                    | ✅ **Built** — 8/8; per-area availability now exists via module 13 (#42)     |
-| 4   | Booking & Job Lifecycle   | Booking, RecurringPlan, BookingStatusEvent, …     | ✅ **Built** — 19/22 features; 3 blocked on modules 5/10/13                  |
-| 5   | Dispatch Engine           | AssignmentCandidate                               | ✅ **Built** — 14/16 features (this row was stale; §5 below already said so) |
-| 6   | Pro Management            | Pro, ProApplication, ProService, ProBankAccount   | ✅ **Built** — 19/19 features                                                |
-| 7   | Payments                  | Order, CashHandover                               | ✅ **Built** — 17/18 features; handover cadence unresolved by design         |
-| 8   | Commission & Payouts      | BookingCommission, CommissionPayout, Incentive, … | ✅ **Built** — 13/13 features; 2 of 4 incentive types have evaluators (#3.6) |
-| 9   | Ledger & Reconciliation   | LedgerEntry, ReconciliationRun, …                 | ✅ **Built** — 9/9 features; variance _trend_ deferred for want of history   |
-| 10  | Training & Reviews        | TrainingModule, ProTrainingProgress, Review, …    | ✅ **Built** — 15/15 features; the activation gate ships **off** (#61)       |
-| 11  | Safety & Support          | SosAlert, SupportTicket, TicketMessage            | ⬜ Not started                                                               |
-| 12  | Notifications             | NotificationLog                                   | ⬜ Not started                                                               |
-| 13  | Geo & Routing             | Area, AreaService, ProArea                        | 🟡 **Mostly built** — areas, geocoding, ETA and WebSockets all live          |
-| 14  | Config & Server-Driven UI | PlatformSetting, UiConfig                         | 🟡 **Partial** — settings API built through Module 15; no UiConfig           |
-| 15  | Admin Console & Reporting | AdminJob _(audit storage deferred)_               | 🟡 **Backend core built** — audit and admin WebSockets deferred by #63       |
+| #   | Module                    | Owns                                                      | Status                                                                                                                      |
+| --- | ------------------------- | --------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Identity & Access         | Role, AdminUser                                           | ✅ **Built** — 10/10 features                                                                                               |
+| 2   | Customer Profile          | Customer, CustomerAddress                                 | ✅ **Built** — 8/9 features; 1 out of scope per ERD                                                                         |
+| 3   | Service Catalog           | ServiceCategory, Service, City                            | ✅ **Built** — 8/8; per-area availability now exists via module 13 (#42)                                                    |
+| 4   | Booking & Job Lifecycle   | Booking, RecurringPlan, BookingStatusEvent, …             | ✅ **Built** — 19/22 features; 3 blocked on modules 5/10/13                                                                 |
+| 5   | Dispatch Engine           | AssignmentCandidate                                       | ✅ **Built** — 14/16 features (this row was stale; §5 below already said so)                                                |
+| 6   | Pro Management            | Pro, ProApplication, ProService, ProBankAccount           | ✅ **Built** — 19/19 features                                                                                               |
+| 7   | Payments                  | Order, CashHandover                                       | ✅ **Built** — 17/18 features; handover cadence unresolved by design                                                        |
+| 8   | Commission & Payouts      | BookingCommission, CommissionPayout, Incentive, …         | ✅ **Built** — 13/13 features; 2 of 4 incentive types have evaluators (#3.6)                                                |
+| 9   | Ledger & Reconciliation   | LedgerEntry, ReconciliationRun, …                         | ✅ **Built** — 9/9 features; variance _trend_ deferred for want of history                                                  |
+| 10  | Training & Reviews        | TrainingModule, ProTrainingProgress, Review, …            | ✅ **Built** — 15/15 features; the activation gate ships **off** (#61)                                                      |
+| 11  | Safety & Support          | SosAlert, SupportTicket, TicketMessage                    | ✅ **MVP built** 2026-08-18 — 14/14 features; 4 stretch items cut, see §11                                                  |
+| 12  | Notifications             | NotificationTemplate, NotificationOutbox, NotificationLog | ✅ **Built** — durable routing, fallbacks, provider status and booking history; partial-PATCH defect fixed 2026-08-18 (§12) |
+| 13  | Geo & Routing             | Area, AreaService, ProArea                                | 🟡 **Mostly built** — areas, geocoding, ETA and WebSockets all live                                                         |
+| 14  | Config & Server-Driven UI | PlatformSetting, PlatformSettingRevision, UiConfig        | ✅ **Built** — setting history, contextual SDUI, versioning, publish and rollback                                           |
+| 15  | Admin Console & Reporting | AdminJob _(audit storage deferred)_                       | 🟡 **Backend core built** — audit and admin WebSockets deferred by #63                                                      |
 
 "Stubbed" means the model exists in `prisma/schema.prisma` because a built module needed it as a foreign key or counter source — not that the module is partly built.
 
@@ -51,6 +51,151 @@ The current delivery intentionally does **not** add `AdminAuditLog` or an admin
 WebSocket namespace (conflict #63). Modules 11 and 12 are still prerequisites
 for actual ticket/SOS/notification data; 360 responses label those sections
 unavailable rather than presenting misleading emptiness.
+
+---
+
+## 11 · Safety & Support — MVP built 2026-08-18
+
+Two-sided SOS, tickets with internal notes, no-start detection and the dispute
+evidence bundle. Plan and post-build notes:
+[`MODULE_11_SAFETY_SUPPORT_PLAN.md`](MODULE_11_SAFETY_SUPPORT_PLAN.md).
+
+**This module was mostly sockets, not greenfield.** Four modules had already
+written their half against a stub — module 7's `SUPPORT_PORT` logged a warning
+and returned; `no_start.graceWindowMinutes` had been defined and validated in
+module 15's settings and read by **no code at all**; module 15's 360s returned
+`support: { available: false }`; and module 4's `reconstruct()` was built for
+US-4.24 with no dispute screen to serve. All four are now filled in.
+
+| #     | Feature                                        | Status                                                                                                                                                                                              |
+| ----- | ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1–2   | One-tap SOS from customer **and** Pro          | ✅ Symmetric, six routes each. Coordinates and `bookingId` both optional — a phone with no fix must still be able to raise one                                                                      |
+| 3     | Live location + full booking-context snapshot  | ✅ Frozen at raise time, never re-derived; carries both parties' phone numbers behind `safety.sos.respond`                                                                                          |
+| 4     | Ops ack with response timestamp, then closure  | ✅ Idempotent ack; `responseSeconds` computed from the two timestamps; two CHECK constraints refuse a response nobody made                                                                          |
+| 5     | SOS bypasses ticket queuing                    | 🟡 Two of three mechanisms — it is not a ticket at all, and fan-out goes direct to permission holders in the alert's own transaction. The outbox `priority` column was cut (module 12 coordination) |
+| 6     | Tickets from customer, Pro **or** the system   | ✅ Four entry points, including module 7's now-live billing ticket                                                                                                                                  |
+| 7     | Five categories                                | ✅ `no_start` refused on both self-service routes — at the DTO and by CHECK                                                                                                                         |
+| 8     | Threading with internal-only notes             | ✅ Both invisibility rules live in the `where` clause, never a post-load filter. Serialise-and-search test, as module 10 used for quiz keys                                                         |
+| 9     | Priority and escalation                        | 🟡 Manual escalation writes its reason into the thread. **SLA auto-escalation cut**                                                                                                                 |
+| 10    | Assignment + resolution notes on close         | ✅ Assignment refuses an admin lacking `support.ticket.manage`; notes and `actionTaken` required by service **and** CHECK                                                                           |
+| 11–12 | No-start detection carrying the applied window | ✅ Two-minute sweep; window read **per city**; `graceSource` records whether the number was the city's, the global default, or the fallback                                                         |
+| 13    | Never surfaced to the Pro                      | ✅ The detector has **no notification dependency at all**, and no Pro-facing template exists. A test asserts both                                                                                   |
+| 14    | Dispute evidence from booking records          | ✅ Wraps `BookingsService.reconstruct()` and adds customer review photos. `routeTrail` reports `available: false` — module 13 owns it                                                               |
+
+### The rule this module is built around
+
+`SupportTicket.isInternal` and `TicketMessage.isInternalNote` are the only
+things between ops's private handling of an incident and the person it
+concerns. Both are query predicates rather than filters over loaded rows,
+because a filter keeps working until somebody adds an `include` and then
+quietly stops. A ticket the caller may not see returns **404, not 403** —
+`403` confirms it exists, which for a quietly-handled no-start incident is
+exactly the fact feature 13 says the Pro must not have.
+
+### Verification
+
+1084/1084 unit, 181/181 e2e, clean boot with all 25 routes mapped. The
+migration's ten CHECK constraints were exercised against the **live** RDS
+schema inside `BEGIN … ROLLBACK` rather than applied — `migrate status` shows
+the shared database still holds the teammate's uncommitted
+`20260815100000_start_otp_minted_in_house`, so **applying the migration is a
+coordination event, not done here**.
+
+`test/module-graph.e2e-spec.ts` earned its place again: `SupportModule` was
+missing `RedisModule`, every unit test passed, and only the real `AppModule`
+compile caught it.
+
+### Live cURL verification against AWS RDS — 2026-08-18
+
+Migration applied to the shared RDS with `prisma migrate deploy` (additive
+only; the teammate's uncommitted `20260815100000_start_otp_minted_in_house`
+was untouched and that drift is still open). Server run against the cloud
+database with the mock OTP provider so no real SMS was sent.
+
+**84 of 85 assertions passed** — [`test/manual/run-support-curl.sh`](../test/manual/run-support-curl.sh),
+seeded by [`test/manual/seed-support-cloud.js`](../test/manual/seed-support-cloud.js).
+Both are idempotent and re-runnable.
+
+The proofs worth naming:
+
+| Proved over live HTTP                                                                                                                                             |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| An SOS with a completely empty body is accepted — a phone with no GPS fix can still raise one                                                                     |
+| The frozen snapshot carries both parties' phone numbers to ops, and is **absent** from the raiser's own view                                                      |
+| Acknowledgement is idempotent — the second call returned the first timestamp unchanged                                                                            |
+| Resolving before acknowledging is a `409`                                                                                                                         |
+| An internal note with a sentinel string was invisible in the customer's serialised thread and visible to ops                                                      |
+| The Pro got `404`, not `403`, for another actor's ticket and for the no-start incident about their own job                                                        |
+| The sweep honoured Indore's **120 min** override and stayed silent on a 90-minute-old arrival; dropping it to 15 raised exactly one, tagged `graceSource: "city"` |
+| A second sweep raised nothing — `systemKey` holds at the database                                                                                                 |
+| Marking the job started made the sweep **close its own incident** as `resolved` / `actionTaken: none`                                                             |
+| No `no_start` notification was addressed to anyone, on any channel                                                                                                |
+
+**The one failure was a real pre-existing defect in module 12**, not a bad
+test — see below. It is now fixed.
+
+### Two claims from the pre-live write-up that the cloud DB disproved
+
+Recorded because both were asserted with more confidence than the evidence
+supported:
+
+1. _"No notification template was ever seeded, by any module."_ Wrong — twelve
+   already existed on the shared database, seeded outside `prisma/seed.ts`.
+   One was already `safety.sos_created`, so module 11 now **reuses that key**
+   instead of shipping a near-duplicate `safety.sos_raised`.
+2. _"`booking.start_otp` is enqueuing into failure."_ Wrong — it and `auth.otp`
+   go through `recordOtpDelivery()`, which writes a `NotificationLog` directly
+   and never resolves a template. An audit of all 16 enqueueable keys against
+   the live table found **no missing, no inactive, and no orphan rows**.
+
+### Known gaps
+
+- The teammate's RDS migration drift is still unreconciled.
+- Cut for the MVP: outbox priority, SLA auto-escalation, the SOS re-notify
+  sweep, and the attachment presign endpoint.
+
+---
+
+## 12 · Notifications — partial template PATCH fixed 2026-08-18
+
+Found by cURL testing against the cloud database, not by the unit suite.
+
+`PATCH /admin/notifications/templates/:key` could not update one field. Sending
+`{"channels":["push"]}` against a template that plainly had a title and a body
+came back `400 Push templates require title and body`.
+
+The cause is a TypeScript-emit detail rather than a logic error.
+`tsconfig.json` targets **ES2023**, which turns on `useDefineForClassFields`,
+so a `class` property that is declared but never assigned still exists on the
+instance as an **own** enumerable key holding `undefined`. The validation
+merge was:
+
+```ts
+const candidate = { ...current, ...dto };
+```
+
+Every field the caller omitted therefore overwrote the stored value with
+`undefined` before `validateTemplate` ran. The database was never corrupted —
+Prisma drops `undefined` from an `update` — so it presented purely as a
+spurious `400`, which is why it survived to production-shaped data.
+
+The fix drops undefined keys before merging, and the write now uses the same
+filtered patch:
+
+```ts
+const patch = Object.fromEntries(
+  Object.entries(dto).filter(([, value]) => value !== undefined),
+);
+this.validateTemplate({ ...current, ...patch });
+```
+
+**Why the existing tests missed it, and what changed.** Every case in
+`notifications.service.spec.ts` passed a plain object literal as the DTO —
+`{ isActive: true }` — and an object literal has no undefined own keys, so the
+bug was unreachable from the suite. The regression test now constructs a real
+`UpdateNotificationTemplateDto` instance, the way the validation pipe does,
+and asserts `'pushTitle' in dto` before exercising the update. Reverting the
+one-line fix makes it fail.
 
 ---
 
@@ -102,7 +247,7 @@ Built 2026-08-10. `ServiceCategory` and `Service` now exist, field-for-field per
 | 5   | City registry with timezone; per-city activation         | ✅ Admin CRUD added — `POST/PATCH /admin/catalog/cities` + an activation route. Cities are created dark                                                           |
 | 6   | Browse and search endpoints                              | ✅ Tree, category drill-down, filter/search, and by-id resolution                                                                                                 |
 | 7   | Duration → Dispatch slot sizing **and Commission tiers** | ✅ / ⛔ — `getDurationMinutes()` is ready for module 5. The commission half is **cancelled** by the ground-rules table, [conflict #7](CONFLICTS_AND_DECISIONS.md) |
-| 8   | Catalog feeds the Server-Driven UI home config           | ⏸ Needs module 14 — `UiConfig` does not exist. Category `slug` is the intended join key and is immutable after creation                                           |
+| 8   | Catalog feeds the Server-Driven UI home config           | ✅ UI-tree validation resolves active category slugs and service UUIDs before publication                                                                         |
 
 **The two dangling foreign keys are closed.** `ProService.serviceId` and `Booking.serviceId` were bare `String` columns with no FK and no `@db.Uuid`, and nothing validated them — `ProServiceAssignmentsService.assign()` accepted any string, producing Pros competent at services that did not exist. Both are now `@db.Uuid` with `ON DELETE RESTRICT` foreign keys, and the assignment path resolves the id through the catalog first. This was the largest correctness gap in the shipped code.
 
@@ -151,7 +296,7 @@ Every US-3.x story in [`user-stories-by-persona/`](user-stories-by-persona/), ch
 | ------------------------------------------------------ | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **US-3.1** Browse categories and services              | C       | ✅ Tree, drill-down and search. Edge — inactive services vanish from browse but stay resolvable by id — implemented and tested                                                                                        |
 | **US-3.2** See one flat price                          | C       | ✅ for the catalog's part: `flatPrice` on browse, and the platform/Pro split is absent from `ServiceDto` (asserted in the Swagger test). The "same number on booking summary, invoice and history" half is module 4's |
-| **US-3.3** Home screen without an app update           | C/A     | ⏸ Module 14. `UiConfig` does not exist; category `slug` is the intended join key and is immutable                                                                                                                     |
+| **US-3.3** Home screen without an app update           | C/A     | ✅ Module 14 publishes versioned, contextual JSON trees through CloudFront; category references are validated before publication                                                                                      |
 | **US-3.4** Create a service                            | A       | ✅ **with a deviation** — commission is a second call, see [conflict #17](CONFLICTS_AND_DECISIONS.md). Edge (one flat national price) holds                                                                           |
 | **US-3.5** Change a service price                      | A       | 🟡 Price edit works and provably touches nothing else. **"Audited" is not satisfied** — no attribution exists ([#9](CONFLICTS_AND_DECISIONS.md), [#14](CONFLICTS_AND_DECISIONS.md))                                   |
 | **US-3.6** Change a service duration                   | A       | ✅ Edit works; nothing cascades. "Does not resize bookings already placed" is guaranteed by module 4 snapshotting, which is not built                                                                                 |
@@ -297,7 +442,7 @@ All 24 US-4.x stories across the three personas, checked against the shipped cod
 | **US-4.17** Work as long as the job takes       | P       | ✅ Duration recorded; commission unchanged ([#18](CONFLICTS_AND_DECISIONS.md))                                                                                                       |
 | **US-4.18** Rate the job                        | C       | ✅ **Built in module 10** — `POST /bookings/:bookingId/review`, within 14 days, immutable once written                                                                               |
 | **US-4.19** Cancel before anyone is assigned    | C       | ✅ Windows A/B, full refund                                                                                                                                                          |
-| **US-4.20** Cancel while the Pro is on the way  | C       | 🟡 Window D correct and the assignment is closed first — but **the Pro is not notified**, so they keep driving. Module 12                                                            |
+| **US-4.20** Cancel while the Pro is on the way  | C       | ✅ Window D closes the assignment and the notification outbox alerts both customer and assigned Pro                                                                                  |
 | **US-4.21** Stop work that's going wrong        | C/A     | ✅ Ops-only, discretionary refund, never a formula                                                                                                                                   |
 | **US-4.22** Cancelled because nobody could come | A/C/S   | ✅ Full refund, no fee — enforced in code, not configurable                                                                                                                          |
 | **US-4.23** Two services for the same morning   | C       | ✅ Two independent bookings, no interaction. Rotation across them is module 5's                                                                                                      |
@@ -501,7 +646,7 @@ No new dependency: it is the self-rescheduling `setTimeout` + Redis lock pattern
 | ---------------------------------- | ------------------------------------------------------------------------------------ |
 | `streak` / `surge_slot` evaluators | **Undefined business rules.** Configurable, visibly inert, excluded from the Pro app |
 | Bank-transfer payouts              | #51 — needs `razorpayxFundAccountId` from module 2's verification step               |
-| Payout-failure notification        | Module 12. `status = failed` is set and visible; nothing is pushed                   |
+| Payout-failure notification        | Built; failure and settlement enqueue durable Pro notification events                |
 | Ledger entries                     | Module 9. `COMMISSION_LEDGER_PORT` logs and returns                                  |
 | Salary                             | **Out of scope by decision** (#45). Every earnings response carries `salaryNote`     |
 
@@ -732,22 +877,22 @@ That is why module 2 is 8/9 rather than 9/9.
 
 ## Out of scope — dependencies on unbuilt modules, not gaps
 
-| Deferred item                            | Needs                    | Where the seam is                                                                          |
-| ---------------------------------------- | ------------------------ | ------------------------------------------------------------------------------------------ |
-| Automatic assignment; slot availability  | Module 5 (Dispatch)      | **`DispatchPort`** — swap one `provide` line in `bookings.module.ts`                       |
-| Online payment; refund execution         | Module 7 (Payments)      | **`PaymentsPort`** — same                                                                  |
-| Commission on completion                 | Module 8                 | `ServiceCatalogService.getCommissionConfig()` built; completion emits the event            |
-| Live ETA and `routeTrail` sampling       | Module 13                | Redis holds current position; nothing accumulates a trail                                  |
-| Push on any booking transition           | Module 12                | Transitions are recorded; no dispatcher listens                                            |
-| `no_start` ticket on grace-window expiry | Module 11                | `no_start.graceWindowMinutes` configured; nothing watches it                               |
-| Review after completion                  | Module 10                | `Review` stubbed; module 10 owns it                                                        |
-| Invoice PDF                              | No PDF tooling           | Number, tax and `invoicedAt` are generated                                                 |
-| Rating counters being _written_          | Module 10                | `ProCountersService.recordReview` built, uncalled. **`recordCompletion` now has a caller** |
-| Admin audit of any mutation              | Module 15                | `AdminAuditLog` deferred by decision; catalog edits carry no attribution                   |
-| Catalog → SDUI home config               | Module 14                | `UiConfig` does not exist; category `slug` is the intended join key                        |
-| Per-service cash eligibility             | ERD change + module 7    | No `Service.allowsCash` column exists                                                      |
-| Live SMS OTP                             | Synquic Slide API key    | Provider implemented; key absent                                                           |
-| S3 upload of real bytes                  | AWS creds / EC2 IAM role | Presigned URL generation works                                                             |
+| Deferred item                                | Needs                    | Where the seam is                                                                          |
+| -------------------------------------------- | ------------------------ | ------------------------------------------------------------------------------------------ |
+| Automatic assignment; slot availability      | Module 5 (Dispatch)      | **`DispatchPort`** — swap one `provide` line in `bookings.module.ts`                       |
+| Online payment; refund execution             | Module 7 (Payments)      | **`PaymentsPort`** — same                                                                  |
+| Commission on completion                     | Module 8                 | `ServiceCatalogService.getCommissionConfig()` built; completion emits the event            |
+| Live ETA and `routeTrail` sampling           | Module 13                | Redis holds current position; nothing accumulates a trail                                  |
+| Push on customer-visible booking transitions | Module 12                | Built transactionally for assignment, travel, arrival, start, completion and cancellation  |
+| `no_start` ticket on grace-window expiry     | Module 11                | `no_start.graceWindowMinutes` configured; nothing watches it                               |
+| Review after completion                      | Module 10                | `Review` stubbed; module 10 owns it                                                        |
+| Invoice PDF                                  | No PDF tooling           | Number, tax and `invoicedAt` are generated                                                 |
+| Rating counters being _written_              | Module 10                | `ProCountersService.recordReview` built, uncalled. **`recordCompletion` now has a caller** |
+| Admin audit of any mutation                  | Module 15                | `AdminAuditLog` deferred by decision; catalog edits carry no attribution                   |
+| Catalog → SDUI home config                   | Module 14                | Built; active category slugs and service IDs are validated before publication              |
+| Per-service cash eligibility                 | ERD change + module 7    | No `Service.allowsCash` column exists                                                      |
+| Live SMS OTP                                 | Synquic Slide API key    | Provider implemented; key absent                                                           |
+| S3 upload of real bytes                      | AWS creds / EC2 IAM role | Presigned URL generation works                                                             |
 
 ---
 
@@ -893,7 +1038,7 @@ Both open with a `DO` block that counts the offending rows and raises a readable
 
 ## Recommendation
 
-Phase 1 of the documented build order is complete bar Config, and phase 3's larger half is done: Identity, Customer Profile, Catalog, Pro Management and Booking are all built. Five of fifteen modules, and the ones every other module reads from.
+Phase 1 of the documented build order and Module 14 Config are complete. Identity, Customer Profile, Catalog, Pro Management, Booking, platform settings and customer-home delivery now have implemented backend surfaces.
 
 **Modules 3 and 4 are verified against a real database.** All 12 migrations apply cleanly, the live schema matches Prisma exactly, all 18 database guards refuse what they should, and a cash job runs from creation to invoice — 24/24 in `test/manual/run-booking-lifecycle-curl.sh`. Two latent defects in module 6's counters were found and fixed in the process.
 

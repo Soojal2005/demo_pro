@@ -77,6 +77,17 @@ async function main(): Promise<void> {
       'report.export',
       'report.analytics.read',
       'platformSetting.read',
+      'uiConfig.read',
+      'uiConfig.manage',
+      'uiConfig.publish',
+      'notification.read',
+      'notification.template.manage',
+      'notification.retry',
+      // Ops is who is actually on shift at 9pm, so ops responds to SOS. They
+      // read the ticket queue but do not work it — that is support's job.
+      'safety.sos.read',
+      'safety.sos.respond',
+      'support.ticket.read',
     ],
     // Support handles the cases a customer cannot self-serve: a mid-job stop
     // (window E) and the door-step OTP override.
@@ -97,6 +108,13 @@ async function main(): Promise<void> {
       'report.export',
       'report.analytics.read',
       'platformSetting.read',
+      'notification.read',
+      'notification.retry',
+      // The queue this role is named for.
+      'safety.sos.read',
+      'safety.sos.respond',
+      'support.ticket.read',
+      'support.ticket.manage',
     ],
     // Commission rates are finance's call, not ops' — see US-3.10 / US-8.4.
     // Bank details and money leaving the platform are the same kind of call.
@@ -116,6 +134,8 @@ async function main(): Promise<void> {
       'report.export',
       'report.analytics.read',
       'platformSetting.read',
+      // Finance reads billing disputes; it does not work the queue.
+      'support.ticket.read',
     ],
     super_admin: ALL_PERMISSION_CODES,
   } as const;
@@ -150,10 +170,105 @@ async function main(): Promise<void> {
   });
 
   await seedCatalog({ seedAreas: true });
+  await seedSupportTemplates();
 
   console.log(
     `Seeded four system roles and admin user (${SEED_ADMIN_PHONE}, ${SEED_ADMIN_EMAIL}).`,
   );
+}
+
+/**
+ * Module 11's notification templates.
+ *
+ * These have to exist as rows: `NotificationWorkerService` looks a template up
+ * by key and fails the outbox entry with "template is missing or inactive" if
+ * it cannot find one. An SOS that reaches the outbox and dies there is worse
+ * than one that was never enqueued, because it looks delivered.
+ *
+ * **Note what is absent.** There is no `support.no_start_*` template addressed
+ * to a Pro, and there never should be. Feature 13 makes a no-start incident
+ * something ops handles quietly; the absence of a template is one of the two
+ * things that enforce it, and `no-start-detector.service.spec.ts` asserts it
+ * rather than trusting it.
+ */
+async function seedSupportTemplates(): Promise<void> {
+  const templates = [
+    {
+      // Already deployed before this module existed — reused rather than
+      // duplicated. See SUPPORT_TEMPLATES.sosRaisedAdmin.
+      key: 'safety.sos_created',
+      description: 'SOS raised — to every on-duty responder.',
+      eventType: 'safety.sos_created',
+      // The one template in this set that must never be quietly dropped.
+      isCritical: true,
+      channels: ['push', 'sms'],
+      pushTitle: 'SOS — immediate response needed',
+      pushBody:
+        'A {{raisedBy}} raised an SOS on booking {{bookingNumber}} at {{addressLine}}.',
+      smsBody:
+        'HOMINGO SOS: {{raisedBy}} on booking {{bookingNumber}}, {{addressLine}}. Open the ops console now.',
+      allowedVariables: [
+        'alertId',
+        'raisedBy',
+        'bookingNumber',
+        'addressLine',
+        'lat',
+        'lng',
+      ],
+    },
+    {
+      key: 'safety.sos_acknowledged',
+      description: 'Tells the raiser somebody is on it.',
+      eventType: 'safety',
+      isCritical: true,
+      channels: ['push', 'sms'],
+      pushTitle: 'We have your alert',
+      pushBody: 'Our safety team has your alert and is responding now.',
+      smsBody: 'Homingo: our safety team has your alert and is responding now.',
+      allowedVariables: ['alertId'],
+    },
+    {
+      key: 'support.ticket_raised',
+      description: 'New ticket — to the support queue.',
+      eventType: 'support',
+      isCritical: false,
+      channels: ['push'],
+      pushTitle: 'New support ticket',
+      pushBody: '{{category}}: {{subject}}',
+      allowedVariables: ['ticketId', 'category', 'subject'],
+    },
+    {
+      key: 'support.ticket_replied',
+      description: 'Support replied — to the raiser.',
+      eventType: 'support',
+      isCritical: false,
+      channels: ['push'],
+      pushTitle: 'Support replied',
+      pushBody: 'There is a new reply on “{{subject}}”.',
+      allowedVariables: ['ticketId', 'subject'],
+    },
+    {
+      key: 'support.ticket_resolved',
+      description: 'Ticket resolved — to the raiser.',
+      eventType: 'support',
+      isCritical: false,
+      channels: ['push'],
+      pushTitle: 'Your ticket is resolved',
+      pushBody: '“{{subject}}” has been resolved. Reply if it is not settled.',
+      allowedVariables: ['ticketId', 'subject'],
+    },
+  ];
+
+  for (const template of templates) {
+    await prisma.notificationTemplate.upsert({
+      where: { key: template.key },
+      // Deliberately does not overwrite an edited template: ops can retune the
+      // wording through module 12's admin route, and a re-seed must not
+      // silently revert their copy.
+      update: { description: template.description },
+      create: template,
+    });
+  }
 }
 
 /**

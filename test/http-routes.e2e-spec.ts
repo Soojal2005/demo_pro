@@ -49,6 +49,12 @@ describe('HTTP routing (e2e)', () => {
           updateMany: () => Promise.resolve({ count: 0 }),
           findFirst: () => Promise.resolve(null),
         },
+        // Same shape for the notification worker: it recovers stale rows in
+        // `onModuleInit` and then drains on a timer.
+        notificationOutbox: {
+          updateMany: () => Promise.resolve({ count: 0 }),
+          findFirst: () => Promise.resolve(null),
+        },
       })
       .overrideProvider(RedisService)
       .useValue({

@@ -48,6 +48,7 @@ function buildDeps() {
       create: jest.fn(),
       update: jest.fn(),
     },
+    notificationLog: { create: jest.fn().mockResolvedValue({}) },
     $transaction: jest.fn(),
   };
   prisma.$transaction.mockImplementation((callback: (tx: unknown) => unknown) =>

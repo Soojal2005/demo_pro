@@ -2,6 +2,7 @@ import { HttpStatus, Type, applyDecorators } from '@nestjs/common';
 import {
   ApiCreatedResponse,
   ApiExtraModels,
+  ApiNoContentResponse,
   ApiOkResponse,
   ApiResponse,
   getSchemaPath,
@@ -100,6 +101,11 @@ export function ApiAcceptedEnvelope(
       schema: envelopeSchema(dataSchemaFor(dto, options.isArray ?? false)),
     }),
   );
+}
+
+/** 204 No Content. The HTTP specification suppresses the response envelope. */
+export function ApiNoContentEnvelope(): MethodDecorator {
+  return applyDecorators(ApiNoContentResponse({ description: 'No content' }));
 }
 
 const STATUS_DESCRIPTIONS: Partial<Record<HttpStatus, string>> = {
