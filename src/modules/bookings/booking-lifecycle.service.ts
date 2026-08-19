@@ -1,5 +1,11 @@
 import { randomInt, timingSafeEqual } from 'node:crypto';
-import { HttpStatus, Inject, Injectable, Logger } from '@nestjs/common';
+import {
+  HttpStatus,
+  Inject,
+  Injectable,
+  Logger,
+  Optional,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { apiError } from '../../common/utils';
 import type { Booking, JobPhotoProof } from '../../prisma/client';
@@ -7,6 +13,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { S3Service } from '../../storage/s3.service';
 import { CustomersService } from '../customers/customers.service';
 import { ProCountersService } from '../pros/pro-counters.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { BookingStateService } from './booking-state.service';
 import type { TransitionCoordinates } from './booking.types';
 import { BookingsService } from './bookings.service';
@@ -55,6 +62,7 @@ export class BookingLifecycleService {
     private readonly settings: PlatformSettingsService,
     private readonly config: ConfigService,
     @Inject(COMMISSION_PORT) private readonly commission: CommissionPort,
+    @Optional() private readonly notifications?: NotificationsService,
   ) {}
 
   /** A positive integer from config, or the fallback when it is unusable. */
@@ -158,6 +166,13 @@ export class BookingLifecycleService {
         startOtpAttempts: 0,
       },
     });
+
+    // `soojal-1` restored the older route here: send the code by SMS through
+    // the identity provider and record the delivery against module 12. That is
+    // the design the comment above explains this one deliberately replaced —
+    // the code never reaches this database, every job start bills a message,
+    // and a customer on no signal cannot start their job at all. Kept as it is;
+    // raised with the developer rather than merged silently.
   }
 
   /**

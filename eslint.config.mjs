@@ -6,7 +6,14 @@ import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
   {
-    ignores: ['eslint.config.mjs'],
+    ignores: [
+      'eslint.config.mjs',
+      // Standalone operator scripts run with plain `node` against a live
+      // database — deliberately outside tsconfig, so the type-checked rules
+      // have no project to resolve them against.
+      'test/manual/**/*.js',
+      'test/manual/**/*.mjs',
+    ],
   },
   eslint.configs.recommended,
   ...tseslint.configs.recommendedTypeChecked,

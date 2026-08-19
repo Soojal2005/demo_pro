@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpStatus,
   Param,
@@ -299,6 +300,33 @@ export class AdminTrainingController {
     @Body() dto: EnrolProsDto,
   ): Promise<TrainingSessionDto> {
     return this.sessions.enrol(id, dto);
+  }
+
+  @Delete('sessions/:id/enrolments/:proId')
+  @RequirePermissions(PermissionCode.TRAINING_MANAGE)
+  @ApiOperation({
+    summary: 'Take a Pro off the list',
+    description:
+      'Gives the seat back. Without this there was no way to undo an enrolment ' +
+      'at all — a Pro added by mistake, or one who called to say they could ' +
+      'not come, held a seat permanently, and capacity cannot be lowered past ' +
+      'the enrolled count either.\n\n' +
+      'Refused once attendance has been marked: that row records whether ' +
+      'somebody was in a room, and removing it would erase the record rather ' +
+      'than correct the list.',
+  })
+  @ApiOkEnvelope(TrainingSessionDto)
+  @ApiErrorEnvelope(
+    HttpStatus.UNAUTHORIZED,
+    HttpStatus.FORBIDDEN,
+    HttpStatus.NOT_FOUND,
+    HttpStatus.CONFLICT,
+  )
+  removeEnrolment(
+    @Param('id') id: string,
+    @Param('proId') proId: string,
+  ): Promise<TrainingSessionDto> {
+    return this.sessions.removeEnrolment(id, proId);
   }
 
   @Post('sessions/:id/attendance')

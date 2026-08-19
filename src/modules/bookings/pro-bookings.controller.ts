@@ -15,14 +15,14 @@ import {
   ApiOkEnvelope,
 } from '../../common/swagger/api-envelope.decorator';
 import type { AuthenticatedUser } from '../../common/types/authenticated-user.type';
-import type { Booking, ChatMessage, JobPhotoProof } from '../../prisma/client';
+import type { ChatMessage, JobPhotoProof } from '../../prisma/client';
 import { RequireActorType } from '../identity/decorators/require-actor-type.decorator';
 import { ActorTypeGuard } from '../identity/guards/actor-type.guard';
 import { JwtAuthGuard } from '../identity/guards/jwt-auth.guard';
 import { BookingChatService } from './booking-chat.service';
 import { BookingLifecycleService } from './booking-lifecycle.service';
 import { BookingsService } from './bookings.service';
-import { BookingDto } from './dto/booking.dto';
+import { ProJobDto } from './dto/pro-job.dto';
 import { ChatMessageDto, SendMessageDto } from './dto/chat.dto';
 import {
   AttachPhotoDto,
@@ -32,6 +32,7 @@ import {
   VerifyStartOtpDto,
 } from './dto/lifecycle.dto';
 import { JobPhotoProofDto } from './dto/photo-proof.dto';
+import { toProJob, toProJobs, type ProJobView } from './pro-booking.view';
 
 /**
  * The Pro App's side of a job.
@@ -55,25 +56,35 @@ export class ProBookingsController {
 
   @Get()
   @ApiOperation({ summary: 'My assigned jobs' })
-  @ApiOkEnvelope(BookingDto, { isArray: true })
+  @ApiOkEnvelope(ProJobDto, { isArray: true })
   @ApiErrorEnvelope(HttpStatus.UNAUTHORIZED, HttpStatus.FORBIDDEN)
-  list(@CurrentUser() user: AuthenticatedUser): Promise<Booking[]> {
-    return this.bookings.listForPro(user.id);
+  async list(@CurrentUser() user: AuthenticatedUser): Promise<ProJobView[]> {
+    return toProJobs(await this.bookings.listForPro(user.id));
+  }
+
+  /**
+   * Every transition below answers with the job as the app should now draw it,
+   * rather than with the bare row the lifecycle service hands back. One extra
+   * read, and it means a screen never has to choose between rendering a
+   * response that is missing the address and firing a second request to get it.
+   */
+  private async job(proId: string, bookingId: string): Promise<ProJobView> {
+    return toProJob(await this.bookings.getProJob(proId, bookingId));
   }
 
   @Get(':id')
   @ApiOperation({ summary: 'Get one assigned job' })
-  @ApiOkEnvelope(BookingDto)
+  @ApiOkEnvelope(ProJobDto)
   @ApiErrorEnvelope(
     HttpStatus.UNAUTHORIZED,
     HttpStatus.FORBIDDEN,
     HttpStatus.NOT_FOUND,
   )
-  getOne(
+  async getOne(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id') id: string,
-  ): Promise<Booking> {
-    return this.bookings.getAssignedBooking(user.id, id);
+  ): Promise<ProJobView> {
+    return this.job(user.id, id);
   }
 
   @Post(':id/en-route')
@@ -83,19 +94,20 @@ export class ProBookingsController {
       'Repeatable: leaving and returning records every leg, and the log keeps ' +
       'all of them.',
   })
-  @ApiOkEnvelope(BookingDto)
+  @ApiOkEnvelope(ProJobDto)
   @ApiErrorEnvelope(
     HttpStatus.UNAUTHORIZED,
     HttpStatus.FORBIDDEN,
     HttpStatus.NOT_FOUND,
     HttpStatus.CONFLICT,
   )
-  enRoute(
+  async enRoute(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id') id: string,
     @Body() dto: TransitionCoordinatesDto,
-  ): Promise<Booking> {
-    return this.lifecycle.markEnRoute(user.id, id, dto);
+  ): Promise<ProJobView> {
+    await this.lifecycle.markEnRoute(user.id, id, dto);
+    return this.job(user.id, id);
   }
 
   @Post(':id/arrived')
@@ -107,19 +119,20 @@ export class ProBookingsController {
       'not restart the clock. Coordinates are recorded wherever you actually ' +
       'are.',
   })
-  @ApiOkEnvelope(BookingDto)
+  @ApiOkEnvelope(ProJobDto)
   @ApiErrorEnvelope(
     HttpStatus.UNAUTHORIZED,
     HttpStatus.FORBIDDEN,
     HttpStatus.NOT_FOUND,
     HttpStatus.CONFLICT,
   )
-  arrived(
+  async arrived(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id') id: string,
     @Body() dto: TransitionCoordinatesDto,
-  ): Promise<Booking> {
-    return this.lifecycle.markArrived(user.id, id, dto);
+  ): Promise<ProJobView> {
+    await this.lifecycle.markArrived(user.id, id, dto);
+    return this.job(user.id, id);
   }
 
   @Post(':id/verify-otp')
@@ -130,7 +143,7 @@ export class ProBookingsController {
       'for commission. Verification is the provider’s answer, never this app’s ' +
       'claim. A wrong code counts an attempt and does not pause the grace clock.',
   })
-  @ApiOkEnvelope(BookingDto)
+  @ApiOkEnvelope(ProJobDto)
   @ApiErrorEnvelope(
     HttpStatus.BAD_REQUEST,
     HttpStatus.UNAUTHORIZED,
@@ -138,15 +151,16 @@ export class ProBookingsController {
     HttpStatus.NOT_FOUND,
     HttpStatus.CONFLICT,
   )
-  verifyOtp(
+  async verifyOtp(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id') id: string,
     @Body() dto: VerifyStartOtpDto,
-  ): Promise<Booking> {
-    return this.lifecycle.verifyStartOtp(user.id, id, dto.code, {
+  ): Promise<ProJobView> {
+    await this.lifecycle.verifyStartOtp(user.id, id, dto.code, {
       lat: dto.lat,
       lng: dto.lng,
     });
+    return this.job(user.id, id);
   }
 
   @Post(':id/photos/upload-url')
@@ -211,19 +225,20 @@ export class ProBookingsController {
       'Those photos are the platform’s only structured record of the finished ' +
       'work — and your primary defence in a dispute.',
   })
-  @ApiOkEnvelope(BookingDto)
+  @ApiOkEnvelope(ProJobDto)
   @ApiErrorEnvelope(
     HttpStatus.UNAUTHORIZED,
     HttpStatus.FORBIDDEN,
     HttpStatus.NOT_FOUND,
     HttpStatus.CONFLICT,
   )
-  complete(
+  async complete(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id') id: string,
     @Body() dto: TransitionCoordinatesDto,
-  ): Promise<Booking> {
-    return this.lifecycle.complete(user.id, id, dto);
+  ): Promise<ProJobView> {
+    await this.lifecycle.complete(user.id, id, dto);
+    return this.job(user.id, id);
   }
 
   @Get(':id/messages')

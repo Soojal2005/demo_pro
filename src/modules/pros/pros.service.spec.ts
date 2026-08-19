@@ -342,3 +342,62 @@ describe('ProsService', () => {
     });
   });
 });
+
+describe('ProsService.findMany · roster search', () => {
+  async function whereFor(
+    filters: Parameters<ProsService['findMany']>[0],
+    allowedCityIds?: string[],
+  ) {
+    const deps = buildDeps();
+    deps.prisma.pro.findMany.mockResolvedValue([]);
+    await buildService(deps).findMany(filters, allowedCityIds);
+    const [call] = deps.prisma.pro.findMany.mock.calls[0] as [
+      { where: Record<string, unknown> },
+    ];
+    return call.where;
+  }
+
+  it('applies no filter when none is given', async () => {
+    expect(await whereFor({})).toEqual({});
+  });
+
+  /**
+   * Three fields, because those are the three an admin has to hand: a name
+   * from a conversation, a code off a roster, a number from a support ticket.
+   */
+  it('matches name, employee code and phone', async () => {
+    expect(await whereFor({ search: 'ravi' })).toEqual({
+      OR: [
+        { fullName: { contains: 'ravi', mode: 'insensitive' } },
+        { employeeCode: { contains: 'ravi', mode: 'insensitive' } },
+        { phone: { contains: 'ravi', mode: 'insensitive' } },
+      ],
+    });
+  });
+
+  it('combines a search with the other filters', async () => {
+    const where = await whereFor({
+      search: 'HG-D004',
+      status: 'approved',
+      isAvailable: true,
+      cityId: 'city-1',
+    });
+
+    expect(where.status).toBe('approved');
+    expect(where.isAvailable).toBe(true);
+    expect(where.cityId).toBe('city-1');
+    expect(where.OR).toHaveLength(3);
+  });
+
+  /** A scoped admin searching must not reach outside their own cities. */
+  it('keeps the city scope alongside a search', async () => {
+    const where = await whereFor({ search: 'ravi' }, ['city-1', 'city-2']);
+
+    expect(where.cityId).toEqual({ in: ['city-1', 'city-2'] });
+    expect(where.OR).toHaveLength(3);
+  });
+
+  it('ignores an empty search rather than matching everything', async () => {
+    expect(await whereFor({ search: '' })).toEqual({});
+  });
+});

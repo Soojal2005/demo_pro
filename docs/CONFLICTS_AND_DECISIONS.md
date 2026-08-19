@@ -89,6 +89,7 @@ Decisions here are binding. If one turns out wrong, change it here first.
 | 63  | Module 15 requires audit and realtime admin sockets; staged delivery omits both | 15       | Build polling REST, jobs and reports now; keep audit decision #2 and admin sockets deferred    |
 | 64  | ERD/persona say Admin OTP; legacy implementation used Firebase                  | 1/15     | Use Slide phone OTP for Admin; retain Firebase exchange only for linked legacy rows            |
 | 65  | Payment attempts are dashboard-only in prose but have a live read API           | 7/15     | Keep the Razorpay read-through API; still store no local attempt rows                          |
+| 66  | NotificationLog requires a recipient FK, but signup OTP precedes the user row   | 1/12     | Permit zero recipient FKs for pre-auth OTP only; retain actor type and masked destination      |
 
 ---
 
@@ -2080,6 +2081,25 @@ current attempts from Razorpay and persists none of them locally.
 **Decision:** keep and document the endpoint. The important architectural rule
 is no local `PaymentAttempt` table and therefore no second copy to drift; a
 permission-checked read-through does not violate that rule.
+
+---
+
+## 66 · A signup OTP has no recipient row yet
+
+**Modules 1/12 · Resolved 2026-08-14**
+
+The ERD says exactly one of `NotificationLog.customerId`, `proId`, or
+`adminUserId` is set. Customer signup sends its OTP before a verified Customer
+row necessarily exists, while Module 12 promises to track every outbound
+message. Creating an account merely to log an unverified OTP would turn an
+authentication attempt into durable customer data.
+
+**Decision:** delivery logs allow zero or one recipient foreign key. Pre-auth
+OTP logs retain `recipientType`, a masked destination, the Slide provider
+reference and timestamps; they never store the code. Once an actor exists,
+normal notification rows still carry the matching foreign key. Outbox rows are
+stricter and require exactly one recipient because background delivery is only
+allowed to authenticated platform actors.
 
 ---
 

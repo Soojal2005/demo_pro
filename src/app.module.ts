@@ -19,6 +19,11 @@ import { ProsModule } from './modules/pros/pros.module';
 import { ReviewsModule } from './modules/reviews/reviews.module';
 import { TrainingModule } from './modules/training/training.module';
 import { AdminModule } from './modules/admin/admin.module';
+import { CdnModule } from './cdn/cdn.module';
+import { ConfigUiModule } from './modules/config-ui/config-ui.module';
+import { DashboardModule } from './modules/dashboard/dashboard.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
+import { SupportModule } from './modules/support/support.module';
 
 // NODE_ENV picks the override file; `.env` is always the fallback beneath it.
 // ConfigModule gives the FIRST file that defines a variable precedence, so the
@@ -33,6 +38,7 @@ const nodeEnv = process.env.NODE_ENV ?? 'local';
       envFilePath: [`.env.${nodeEnv}`, '.env'],
     }),
     PrismaModule,
+    CdnModule,
     GeocodingModule,
     // Global, like geocoding, and for the same reason: dispatch, bookings and
     // geo all need road travel time and none of them can own it.
@@ -40,6 +46,7 @@ const nodeEnv = process.env.NODE_ENV ?? 'local';
     HealthModule,
     CatalogModule,
     IdentityModule,
+    NotificationsModule,
     CustomersModule,
     ProsModule,
     BookingsModule,
@@ -59,9 +66,18 @@ const nodeEnv = process.env.NODE_ENV ?? 'local';
     // it is, several lines above.
     ReviewsModule,
     TrainingModule,
+    // Module 11. Registers into module 7's SUPPORT_PORT delegate, so
+    // PaymentsModule must already be constructed — it is, above. Also depends
+    // on BookingsModule for the evidence bundle and the grace-window reader.
+    SupportModule,
     // Module 15 is an aggregation layer over the domain modules above. It is
     // last so it reuses their tables and services instead of owning copies.
     AdminModule,
+    // The admin console's landing screen. Like AdminModule it owns no tables —
+    // it counts rows the modules above already store. Kept separate because it
+    // answers one screen's question, not a reporting need.
+    DashboardModule,
+    ConfigUiModule,
   ],
   controllers: [AppController],
   providers: [AppService],

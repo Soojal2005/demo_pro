@@ -6,6 +6,7 @@ import {
   type DecodedIdToken,
   type UserRecord,
 } from 'firebase-admin/auth';
+import { getMessaging, type Messaging } from 'firebase-admin/messaging';
 import { buildFirebaseOptions } from '../config/firebase.config';
 import { initFirebaseAdmin } from './init-firebase-admin';
 
@@ -25,6 +26,7 @@ export interface CreateFirebaseUserInput {
 @Injectable()
 export class FirebaseAdminService {
   private auth?: Auth;
+  private messaging?: Messaging;
 
   constructor(private readonly config: ConfigService) {}
 
@@ -43,6 +45,46 @@ export class FirebaseAdminService {
       this.auth = getAuth(initFirebaseAdmin(options.serviceAccountPath));
     }
     return this.auth;
+  }
+
+  private getMessaging(): Messaging {
+    if (!this.messaging) {
+      const options = buildFirebaseOptions({
+        NODE_ENV: this.config.get<string>('NODE_ENV'),
+        FIREBASE_SERVICE_ACCOUNT_PATH: this.config.get<string>(
+          'FIREBASE_SERVICE_ACCOUNT_PATH',
+        ),
+      });
+      this.messaging = getMessaging(
+        initFirebaseAdmin(options.serviceAccountPath),
+      );
+    }
+    return this.messaging;
+  }
+
+  sendPush(input: {
+    token: string;
+    title: string;
+    body: string;
+    data: Record<string, string>;
+    platform?: string;
+  }): Promise<string> {
+    return this.getMessaging().send({
+      token: input.token,
+      notification: { title: input.title, body: input.body },
+      data: input.data,
+      android:
+        input.platform === 'android'
+          ? { priority: 'high', notification: { channelId: 'homingo' } }
+          : undefined,
+      apns:
+        input.platform === 'ios'
+          ? {
+              headers: { 'apns-priority': '10' },
+              payload: { aps: { sound: 'default' } },
+            }
+          : undefined,
+    });
   }
 
   async verifyIdToken(idToken: string): Promise<DecodedIdToken> {

@@ -4,7 +4,13 @@ import { IsIn, Matches } from 'class-validator';
 import type { ActorType } from '../../../common/types/authenticated-user.type';
 import { normalizePhone } from './phone.transform';
 
-const ACTOR_TYPES: ActorType[] = ['customer', 'pro', 'admin'];
+/**
+ * Admins are absent on purpose. They authenticate through Firebase
+ * (`POST auth/admin/firebase-login`), which is the console's only door in.
+ * Rejecting `admin` here means the refusal is a clean 400 at validation
+ * rather than a service that has to explain itself.
+ */
+const ACTOR_TYPES: ActorType[] = ['customer', 'pro'];
 
 export class RequestOtpDto {
   @ApiProperty({

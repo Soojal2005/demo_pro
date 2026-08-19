@@ -179,6 +179,31 @@ describe('reversing twice', () => {
     expect(outcome.deductedAmount).toBe('300.00');
   });
 
+  /**
+   * A manual deduction an admin raises against the same job also carries this
+   * commission's `sourceCommissionId`. Reading it back as though the reversal
+   * had raised it turns a `dropped` reversal into a reported `deducted`, at
+   * whatever figure the admin happened to type — money this call never charged.
+   *
+   * Asserted on the query rather than the result: the mock does not honour a
+   * `where`, so only the filter itself can prove the narrowing.
+   */
+  it('reads back only what a reversal raises, not a manual deduction on the same job', async () => {
+    const deps = buildDeps();
+    deps.prisma.bookingCommission.findUnique.mockResolvedValue(
+      aCommission({ status: 'reversed', reversedAt: new Date() }),
+    );
+
+    await build(deps).reverse('comm-1', 'Again', 'admin-1');
+
+    expect(deps.prisma.payoutDeduction.findMany).toHaveBeenCalledWith({
+      where: {
+        sourceCommissionId: 'comm-1',
+        kind: { in: ['commission_reversal', 'incentive_unwind'] },
+      },
+    });
+  });
+
   it('reports "dropped" on a repeat of a reversal that never reached a payout', async () => {
     const deps = buildDeps();
     deps.prisma.bookingCommission.findUnique.mockResolvedValue(

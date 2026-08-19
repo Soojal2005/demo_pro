@@ -1,6 +1,7 @@
 import { HttpStatus, Injectable, NotFoundException } from '@nestjs/common';
 import type { Prisma, ProApplication } from '../../prisma/client';
 import { apiError } from '../../common/utils';
+import { pageMeta, type Paged } from '../../common/dto/paged-query.dto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ApplicationDecisionDto } from './dto/application-decision.dto';
 import { SubmitProApplicationDto } from './dto/submit-pro-application.dto';
@@ -146,23 +147,78 @@ export class ProApplicationsService {
    * this query never joined it. Selected fields only; the Pro row carries
    * far more than an onboarding reviewer needs.
    */
-  findAll(
-    filters: { queueStatus?: string },
+  /**
+   * Paged rather than capped, unlike the other admin lists.
+   *
+   * This one is a **queue**, not an archive. A cap on a list of recent records
+   * costs an admin a search; a cap on a queue means the applications past it
+   * are never reviewed by anyone, and the people who filed them wait forever
+   * with nothing on screen to say why.
+   *
+   * Oldest first, for the same reason — the person who has waited longest is
+   * the one to serve next.
+   */
+  async findAll(
+    filters: {
+      search?: string;
+      queueStatus?: string;
+      page?: number;
+      limit?: number;
+    },
     allowedCityIds?: string[],
-  ): Promise<ProApplicationWithApplicant[]> {
-    return this.prisma.proApplication.findMany({
-      where: {
-        ...(filters.queueStatus ? { queueStatus: filters.queueStatus } : {}),
-        ...(allowedCityIds?.length
-          ? { pro: { cityId: { in: allowedCityIds } } }
-          : {}),
-      },
-      include: { pro: { select: APPLICANT_SELECT } },
-      orderBy: { submittedAt: 'asc' },
-      // A safety cap, matching every other admin list in this codebase —
-      // this query previously had none.
-      take: 200,
-    });
+  ): Promise<Paged<ProApplicationWithApplicant>> {
+    const page = filters.page ?? 1;
+    const limit = filters.limit ?? 20;
+
+    const where: Prisma.ProApplicationWhereInput = {
+      // Both names, because they routinely differ: somebody signs up as
+      // "Ravi" and their Aadhaar reads "Ravi Kumar Chauhan". A reviewer has
+      // whichever one the conversation gave them, not both.
+      ...(filters.search && {
+        OR: [
+          {
+            pro: {
+              fullName: { contains: filters.search, mode: 'insensitive' },
+            },
+          },
+          { pro: { phone: { contains: filters.search, mode: 'insensitive' } } },
+          {
+            documentFullName: {
+              contains: filters.search,
+              mode: 'insensitive',
+            },
+          },
+        ],
+      }),
+      ...(filters.queueStatus ? { queueStatus: filters.queueStatus } : {}),
+      ...(allowedCityIds?.length
+        ? { pro: { cityId: { in: allowedCityIds } } }
+        : {}),
+    };
+
+    const [data, total] = await Promise.all([
+      this.prisma.proApplication.findMany({
+        where,
+        include: { pro: { select: APPLICANT_SELECT } },
+        orderBy: { submittedAt: 'asc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      this.prisma.proApplication.count({ where }),
+    ]);
+
+    return { data, meta: pageMeta(page, limit, total) };
+  }
+
+  /**
+   * One application, by id.
+   *
+   * The console previously reconstructed this by fetching the list and finding
+   * the row in it, which only ever worked because the list was unpaged — the
+   * moment it was paged, opening anything past the first page found nothing.
+   */
+  findOne(id: string): Promise<ProApplicationWithApplicant> {
+    return this.getOrThrow(id);
   }
 
   private async getOrThrow(id: string): Promise<ProApplicationWithApplicant> {

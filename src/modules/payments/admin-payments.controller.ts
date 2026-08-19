@@ -34,6 +34,8 @@ import {
   ReconciliationQueryDto,
   ReconciliationReportDto,
 } from './dto/refund.dto';
+import { AdminOrderQueryDto } from './dto/admin-order-query.dto';
+import { pageMeta } from '../../common/dto/paged-query.dto';
 import { OrdersService } from './orders.service';
 import { ReconciliationService } from './reconciliation.service';
 import { RefundsService } from './refunds.service';
@@ -65,21 +67,45 @@ export class AdminPaymentsController {
   })
   @ApiOkEnvelope(OrderDto, { isArray: true })
   @ApiErrorEnvelope(HttpStatus.UNAUTHORIZED, HttpStatus.FORBIDDEN)
-  async list(
-    @Query('status') status?: string,
-    @Query('bookingId') bookingId?: string,
-    @Query('take') take = 50,
-    @Query('skip') skip = 0,
-  ) {
+  async list(@Query() query: AdminOrderQueryDto) {
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 20;
+
     const [items, total] = await this.orders.list(
-      { ...(status ? { status } : {}), ...(bookingId ? { bookingId } : {}) },
-      Math.min(Number(take) || 50, 200),
-      Number(skip) || 0,
+      {
+        ...(query.search
+          ? {
+              OR: [
+                {
+                  booking: {
+                    bookingNumber: {
+                      contains: query.search,
+                      mode: 'insensitive' as const,
+                    },
+                  },
+                },
+                {
+                  razorpayOrderId: {
+                    contains: query.search,
+                    mode: 'insensitive' as const,
+                  },
+                },
+              ],
+            }
+          : {}),
+        ...(query.status ? { status: query.status } : {}),
+        ...(query.bookingId ? { bookingId: query.bookingId } : {}),
+      },
+      limit,
+      (page - 1) * limit,
     );
 
+    // `meta`, not a sentence in `message`. The total used to be readable only
+    // by parsing "50 orders" out of the message, so the console never did —
+    // it paged the first fifty rows client-side and every order past them was
+    // unreachable, with the page numbers claiming otherwise.
     return successResponse({
-      data: items,
-      message: `${total} orders`,
+      data: { data: items, meta: pageMeta(page, limit, total) },
     });
   }
 

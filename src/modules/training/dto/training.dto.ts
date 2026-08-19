@@ -1,5 +1,10 @@
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
+import { BooleanQuery } from '../../../common/dto/boolean-query.transform';
+import {
+  PageMetaDto,
+  PagedQueryDto,
+} from '../../../common/dto/paged-query.dto';
 import {
   ArrayMaxSize,
   ArrayMinSize,
@@ -33,29 +38,9 @@ import {
 // decoration time, so a forward reference is a crash at import.
 // ---------------------------------------------------------------------
 
-export class PageMetaDto {
-  @ApiProperty() page: number;
-  @ApiProperty() limit: number;
-  @ApiProperty() total: number;
-  @ApiProperty() totalPages: number;
-}
-
-export class PagedQueryDto {
-  @ApiPropertyOptional({ default: 1 })
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  page?: number = 1;
-
-  @ApiPropertyOptional({ default: 20, maximum: 100 })
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  @Max(100)
-  limit?: number = 20;
-}
+// Paging lives in `common/dto` now that four modules share it. Re-exported so
+// this module's existing imports keep working.
+export { PageMetaDto, PagedQueryDto };
 
 // ---------------------------------------------------------------------
 // Admin · content
@@ -218,13 +203,13 @@ export class TrainingModuleQueryDto extends PagedQueryDto {
 
   @ApiPropertyOptional()
   @IsOptional()
-  @Type(() => Boolean)
+  @BooleanQuery()
   @IsBoolean()
   isActive?: boolean;
 
   @ApiPropertyOptional()
   @IsOptional()
-  @Type(() => Boolean)
+  @BooleanQuery()
   @IsBoolean()
   isMandatory?: boolean;
 }
@@ -571,6 +556,22 @@ export class SessionQueryDto extends PagedQueryDto {
   @IsOptional()
   @IsUUID()
   categoryId?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Sessions scheduled at or after this instant. Either bound may be sent ' +
+      'on its own — "everything from Monday" and "everything before the ' +
+      'quarter closed" are both whole questions.',
+    example: '2026-09-01T00:00:00.000Z',
+  })
+  @IsOptional()
+  @IsISO8601()
+  scheduledFrom?: string;
+
+  @ApiPropertyOptional({ example: '2026-09-30T23:59:59.999Z' })
+  @IsOptional()
+  @IsISO8601()
+  scheduledTo?: string;
 }
 
 export class SessionAttendeeDto {

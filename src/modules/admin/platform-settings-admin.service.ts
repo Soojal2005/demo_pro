@@ -221,6 +221,11 @@ const DEFINITIONS: Record<string, Definition> = {
   },
 };
 
+const CRITICAL_KEYS = new Set([
+  'dispatch.ratingPriorMean',
+  'dispatch.ratingPriorWeight',
+]);
+
 @Injectable()
 export class PlatformSettingsAdminService {
   constructor(private readonly prisma: PrismaService) {}
@@ -252,7 +257,12 @@ export class PlatformSettingsAdminService {
         : null;
       return {
         key: settingKey,
-        definition: DEFINITIONS[settingKey] ?? null,
+        definition: DEFINITIONS[settingKey]
+          ? {
+              ...DEFINITIONS[settingKey],
+              risk: CRITICAL_KEYS.has(settingKey) ? 'critical' : 'standard',
+            }
+          : null,
         global,
         cityOverride: override,
         effectiveValue: override?.value ?? global?.value ?? null,
@@ -266,10 +276,13 @@ export class PlatformSettingsAdminService {
     value: string,
     cityId: string | undefined,
     adminId: string,
+    reason: string,
+    confirmImpact = false,
   ) {
     const definition = DEFINITIONS[key];
     if (!definition)
       throw apiError('Unknown platform setting key', HttpStatus.BAD_REQUEST);
+    this.assertImpactConfirmed(key, confirmImpact);
     this.validate(key, value, definition);
     if (
       key === 'reporting.customerLapsedDays' ||
@@ -304,36 +317,98 @@ export class PlatformSettingsAdminService {
       });
       if (!city) throw apiError('City not found', HttpStatus.NOT_FOUND);
     }
-    const existing = await this.prisma.platformSetting.findFirst({
-      where: { key, cityId: cityId ?? null },
-    });
-    if (existing)
-      return this.prisma.platformSetting.update({
-        where: { id: existing.id },
+    return this.prisma.$transaction(async (tx) => {
+      const existing = await tx.platformSetting.findFirst({
+        where: { key, cityId: cityId ?? null },
+      });
+      const saved = existing
+        ? await tx.platformSetting.update({
+            where: { id: existing.id },
+            data: {
+              value,
+              description: definition.description,
+              updatedByAdminId: adminId,
+            },
+          })
+        : await tx.platformSetting.create({
+            data: {
+              key,
+              cityId: cityId ?? null,
+              value,
+              description: definition.description,
+              updatedByAdminId: adminId,
+            },
+          });
+      await tx.platformSettingRevision.create({
         data: {
-          value,
-          description: definition.description,
-          updatedByAdminId: adminId,
+          settingId: saved.id,
+          key,
+          cityId: cityId ?? null,
+          action: existing ? 'updated' : 'created',
+          previousValue: existing?.value ?? null,
+          newValue: value,
+          reason,
+          impactConfirmed: confirmImpact,
+          changedByAdminId: adminId,
         },
       });
-    return this.prisma.platformSetting.create({
-      data: {
-        key,
-        cityId: cityId ?? null,
-        value,
-        description: definition.description,
-        updatedByAdminId: adminId,
-      },
+      return saved;
     });
   }
 
-  async removeOverride(key: string, cityId: string) {
-    const deleted = await this.prisma.platformSetting.deleteMany({
-      where: { key, cityId },
+  async removeOverride(
+    key: string,
+    cityId: string,
+    adminId: string,
+    reason: string,
+    confirmImpact = false,
+  ) {
+    if (!DEFINITIONS[key])
+      throw apiError('Unknown platform setting key', HttpStatus.BAD_REQUEST);
+    this.assertImpactConfirmed(key, confirmImpact);
+    return this.prisma.$transaction(async (tx) => {
+      const existing = await tx.platformSetting.findFirst({
+        where: { key, cityId },
+      });
+      if (!existing)
+        throw apiError('City override not found', HttpStatus.NOT_FOUND);
+      await tx.platformSettingRevision.create({
+        data: {
+          settingId: existing.id,
+          key,
+          cityId,
+          action: 'reset',
+          previousValue: existing.value,
+          newValue: null,
+          reason,
+          impactConfirmed: confirmImpact,
+          changedByAdminId: adminId,
+        },
+      });
+      await tx.platformSetting.delete({ where: { id: existing.id } });
+      return { key, cityId, reset: true };
     });
-    if (!deleted.count)
-      throw apiError('City override not found', HttpStatus.NOT_FOUND);
-    return { key, cityId, reset: true };
+  }
+
+  revisions(key: string, cityId?: string) {
+    if (!DEFINITIONS[key])
+      throw apiError('Unknown platform setting key', HttpStatus.BAD_REQUEST);
+    return this.prisma.platformSettingRevision.findMany({
+      where: { key, ...(cityId === undefined ? {} : { cityId }) },
+      include: {
+        changedByAdmin: { select: { id: true, fullName: true, email: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    });
+  }
+
+  private assertImpactConfirmed(key: string, confirmed: boolean): void {
+    if (CRITICAL_KEYS.has(key) && !confirmed)
+      throw apiError(
+        `${key} changes city-wide Pro ranking; confirmImpact must be true`,
+        HttpStatus.BAD_REQUEST,
+      );
   }
 
   private validate(key: string, value: string, definition: Definition): void {

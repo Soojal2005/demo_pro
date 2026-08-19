@@ -22,6 +22,7 @@ import type {
   CustomerBookingDetailDto,
   CustomerBookingDto,
 } from './dto/customer-booking.dto';
+import { PRO_JOB_INCLUDE, type ProJobRow } from './pro-booking.view';
 import { DISPATCH_PORT, type DispatchPort } from './ports/dispatch.port';
 import { PAYMENTS_PORT, type PaymentsPort } from './ports/payments.port';
 import {
@@ -224,6 +225,7 @@ export class BookingsService {
    */
   listForAdmin(
     query: {
+      search?: string;
       status?: BookingStatus;
       customerId?: string;
       proId?: string;
@@ -232,6 +234,12 @@ export class BookingsService {
   ): Promise<Booking[]> {
     return this.prisma.booking.findMany({
       where: {
+        // Applied here rather than in the console, because `take` below caps
+        // the result: filtering the returned page would answer "no such
+        // booking" for anything older than the hundredth.
+        ...(query.search && {
+          bookingNumber: { contains: query.search, mode: 'insensitive' },
+        }),
         status: query.status,
         customerId: query.customerId,
         proId: query.proId,
@@ -321,11 +329,37 @@ export class BookingsService {
     });
   }
 
-  listForPro(proId: string): Promise<Booking[]> {
+  /**
+   * The Pro's live work, resolved into what a job card actually draws.
+   *
+   * `PRO_JOB_INCLUDE` rather than a bare row: the ids alone cannot tell a Pro
+   * where to go, and no other Pro-facing route resolves a customer address.
+   * See `pro-booking.view.ts`.
+   */
+  listForPro(proId: string): Promise<ProJobRow[]> {
     return this.prisma.booking.findMany({
       where: { proId, status: { in: LIVE_STATUSES } },
       orderBy: { slotStartAt: 'asc' },
+      include: PRO_JOB_INCLUDE,
     });
+  }
+
+  /**
+   * One assigned job, with everything the Pro app needs to render it.
+   *
+   * Separate from `getAssignedBooking`, which stays a bare row because the
+   * lifecycle service compares against `startOtpCode` and has no use for the
+   * joins. Same ownership rule: someone else's booking reads as a 404.
+   */
+  async getProJob(proId: string, bookingId: string): Promise<ProJobRow> {
+    const booking = await this.prisma.booking.findUnique({
+      where: { id: bookingId },
+      include: PRO_JOB_INCLUDE,
+    });
+    if (!booking || booking.proId !== proId) {
+      throw apiError('Booking not found', HttpStatus.NOT_FOUND);
+    }
+    return booking;
   }
 
   async getOwnedBooking(
@@ -380,6 +414,29 @@ export class BookingsService {
         statusEvents: { orderBy: { occurredAt: 'asc' } },
         photoProofs: { orderBy: { capturedAt: 'asc' } },
         chatMessages: { orderBy: { sentAt: 'asc' } },
+
+        // Who and what, not just their ids.
+        //
+        // This route's whole promise is the record in one call — "if
+        // reconstruction takes four tabs, disputes get settled on the
+        // customer's word instead of the record". It was returning
+        // `customerId`, `proId`, `serviceId` and `addressId` and nothing
+        // else, so settling a dispute meant opening those four tabs anyway.
+        // Selected narrowly: enough to know who this is and to ring them.
+        customer: {
+          select: { id: true, fullName: true, phone: true, email: true },
+        },
+        pro: {
+          select: { id: true, fullName: true, phone: true, employeeCode: true },
+        },
+        service: { select: { id: true, name: true, durationMinutes: true } },
+        address: {
+          select: {
+            addressLine: true,
+            landmark: true,
+            city: { select: { id: true, name: true } },
+          },
+        },
       },
     });
     if (!booking) throw apiError('Booking not found', HttpStatus.NOT_FOUND);
@@ -387,16 +444,84 @@ export class BookingsService {
   }
 
   // ------------------------------------------------------------------
-  // Admin assignment — the manual stand-in for module 5
+  // Admin assignment — the ops override alongside module 5
   // ------------------------------------------------------------------
 
   /**
-   * Ops assigns a Pro by hand. This exists because Dispatch (module 5) does
-   * not: without it, every booking would sit in `assigning` forever and no
-   * part of the lifecycle past assignment could be exercised at all.
+   * The one gate every hand-placed assignment passes through.
    *
-   * When module 5 lands this stays — US-5.14 requires an ops manual override
-   * from the Live Dispatch screen regardless.
+   * An ops override skips dispatch's *ranking* — who is nearest, whose turn it
+   * is, who is rated well. It does not get to skip the facts that make an
+   * assignment possible at all, which is what these five checks are. Dispatch
+   * applies the same ones before it scores anyone
+   * (`DispatchScoringService.findEligiblePros` and `computeFreeWindow`); this
+   * is that floor, restated for the manual path.
+   *
+   * Deliberately no force flag: `reassignByAdmin` has never had one, and two
+   * admin routes with different rules is how this drifted apart in the first
+   * place. If ops ever needs an escape hatch, both paths get it together.
+   */
+  private async assertProEligible(
+    booking: {
+      id: string;
+      serviceId: string;
+      slotStartAt: Date | null;
+      slotEndAt: Date | null;
+    },
+    cityId: string,
+    proId: string,
+  ): Promise<void> {
+    const pro = await this.prisma.pro.findUnique({
+      where: { id: proId },
+      include: {
+        services: {
+          where: { serviceId: booking.serviceId, isActive: true },
+          select: { id: true },
+        },
+      },
+    });
+    if (
+      !pro ||
+      pro.status !== 'approved' ||
+      !pro.isAvailable ||
+      pro.cityId !== cityId ||
+      !pro.services.length
+    ) {
+      throw apiError(
+        'The selected Pro is not currently eligible for this booking',
+        HttpStatus.CONFLICT,
+      );
+    }
+
+    // A Pro cannot be in two places. Only committed work occupies time — there
+    // is no roster, so `isAvailable` above is the whole of "on duty".
+    if (booking.slotStartAt && booking.slotEndAt) {
+      const overlap = await this.prisma.booking.count({
+        where: {
+          id: { not: booking.id },
+          proId: pro.id,
+          status: { in: ['assigned', 'en_route', 'arrived', 'started'] },
+          slotStartAt: { lt: booking.slotEndAt },
+          slotEndAt: { gt: booking.slotStartAt },
+        },
+      });
+      if (overlap) {
+        throw apiError(
+          'The selected Pro has a committed booking in this window',
+          HttpStatus.CONFLICT,
+        );
+      }
+    }
+  }
+
+  /**
+   * Ops places a Pro on a booking that is still looking for one.
+   *
+   * Predates dispatch, and stays now that dispatch exists because US-5.14
+   * requires a manual override from the Live Dispatch screen regardless. What
+   * it no longer does is accept any Pro id at all: it was written when there
+   * was no engine to be consistent with, and went years without the checks
+   * dispatch and reassignment both apply.
    */
   async assignPro(
     bookingId: string,
@@ -404,6 +529,14 @@ export class BookingsService {
     adminId: string,
     reason?: string,
   ): Promise<Booking> {
+    const booking = await this.prisma.booking.findUnique({
+      where: { id: bookingId },
+      include: { address: { select: { cityId: true } } },
+    });
+    if (!booking) throw apiError('Booking not found', HttpStatus.NOT_FOUND);
+
+    await this.assertProEligible(booking, booking.address.cityId, proId);
+
     return this.state.transition({
       bookingId,
       to: 'assigned',
@@ -414,10 +547,13 @@ export class BookingsService {
         pro: { connect: { id: proId } },
         assignedAt: new Date(),
         assignmentAttempt: { increment: 1 },
-        assignmentOutcome: 'acknowledged',
+        // Not `acknowledged`: the Pro was told, not asked. Claiming otherwise
+        // put a consent in the record that never happened, and — because the
+        // acknowledgement endpoint requires `pending_ack` — locked the Pro out
+        // of ever confirming the job they had just been handed.
+        assignmentOutcome: 'ops_assigned',
         overriddenByAdmin: { connect: { id: adminId } },
-        overrideReason:
-          reason ?? 'Manual assignment (dispatch engine not built)',
+        overrideReason: reason ?? 'Manual assignment by ops',
       },
     });
   }
@@ -463,43 +599,11 @@ export class BookingsService {
     }
 
     if (input.mode === 'specific_pro') {
-      const pro = await this.prisma.pro.findUnique({
-        where: { id: input.proId },
-        include: {
-          services: {
-            where: { serviceId: booking.serviceId, isActive: true },
-            select: { id: true },
-          },
-        },
-      });
-      if (
-        !pro ||
-        pro.status !== 'approved' ||
-        !pro.isAvailable ||
-        pro.cityId !== booking.address.cityId ||
-        !pro.services.length
-      ) {
-        throw apiError(
-          'The selected Pro is not currently eligible for this booking',
-          HttpStatus.CONFLICT,
-        );
-      }
-      if (booking.slotStartAt && booking.slotEndAt) {
-        const overlap = await this.prisma.booking.count({
-          where: {
-            id: { not: booking.id },
-            proId: pro.id,
-            status: { in: ['assigned', 'en_route', 'arrived', 'started'] },
-            slotStartAt: { lt: booking.slotEndAt },
-            slotEndAt: { gt: booking.slotStartAt },
-          },
-        });
-        if (overlap)
-          throw apiError(
-            'The selected Pro has a committed booking in this window',
-            HttpStatus.CONFLICT,
-          );
-      }
+      await this.assertProEligible(
+        booking,
+        booking.address.cityId,
+        input.proId!,
+      );
     }
 
     const updated = await this.prisma.$transaction(async (tx) => {

@@ -211,7 +211,15 @@ export class CommissionReversalService implements CommissionReversalPort {
     commission: BookingCommission,
   ): Promise<ReversalOutcome> {
     const raised = await this.prisma.payoutDeduction.findMany({
-      where: { sourceCommissionId: commission.id },
+      // Narrowed to the two kinds a reversal itself raises. `sourceCommissionId`
+      // alone is too wide: an admin raising a manual deduction against the same
+      // job also stamps it, and counting that here makes a repeat call report
+      // money this reversal never charged — `dropped` reads back as `deducted`,
+      // and `deductedAmount` reads back as the manual figure.
+      where: {
+        sourceCommissionId: commission.id,
+        kind: { in: ['commission_reversal', 'incentive_unwind'] },
+      },
     });
     return {
       commissionId: commission.id,
